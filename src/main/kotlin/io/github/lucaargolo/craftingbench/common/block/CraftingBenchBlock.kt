@@ -1,5 +1,6 @@
 package io.github.lucaargolo.craftingbench.common.block
 
+import io.github.lucaargolo.craftingbench.client.CraftingBenchClient
 import net.minecraft.block.Block
 import net.minecraft.block.BlockState
 import net.minecraft.client.network.ClientPlayerEntity
@@ -32,8 +33,15 @@ class CraftingBenchBlock(settings: Settings) : Block(settings) {
             repeat(player.inventory.size()) { slot ->
                 fakeInventory.setStack(slot, player.inventory.getStack(slot).copy())
             }
-            val craftableRecipes: MutableMap<Recipe<*>, List<Recipe<*>>> = mutableMapOf()
-            populateRecipes(recipeBook, craftableRecipes, listOf(), fakeInventory, 0)
+            val allRecipes = mutableSetOf<Recipe<*>>()
+            recipeBook.orderedResults.forEach { resultCollection ->
+                resultCollection.allRecipes.forEach { recipe ->
+                    if (recipe.type == RecipeType.CRAFTING) {
+                        allRecipes.add(recipe)
+                    }
+                }
+            }
+            val craftableRecipes = populateRecipes(allRecipes, recipeBook, mutableMapOf(), listOf(), fakeInventory, 0)
             craftableRecipes.forEach { (recipe, recipeHistory) ->
                 println(recipe.id)
             }
@@ -41,34 +49,39 @@ class CraftingBenchBlock(settings: Settings) : Block(settings) {
         return ActionResult.SUCCESS
     }
 
-    private fun populateRecipes(recipeBook: ClientRecipeBook, craftableRecipes: MutableMap<Recipe<*>, List<Recipe<*>>>, recipeHistory: List<Recipe<*>>, fakeInventory: SimpleInventory, depth: Int) {
-        if(depth > 5) {
-            return
+    private fun populateRecipes(testRecipes: Iterable<Recipe<*>>, recipeBook: ClientRecipeBook, craftableRecipes: MutableMap<Recipe<*>, List<Recipe<*>>>, recipeHistory: List<Recipe<*>>, fakeInventory: SimpleInventory, depth: Int): MutableMap<Recipe<*>, List<Recipe<*>>> {
+        if(depth > 10) {
+            return craftableRecipes
         }
         val recipeFinder = RecipeMatcher()
         repeat(fakeInventory.size()) { slot ->
             recipeFinder.addUnenchantedInput(fakeInventory.getStack(slot))
         }
-        val list = recipeBook.orderedResults
-        list.forEach { resultCollection ->
-            resultCollection.allRecipes.forEach { recipe ->
+        val newCraftableRecipes = mutableSetOf<Recipe<*>>()
+        testRecipes.forEach { recipe ->
+            if(recipe.type == RecipeType.CRAFTING) {
                 val matcher = recipeFinder.Matcher(recipe)
-                //TODO: Substituir o recipe se o depth for menor
-                if(recipe.type == RecipeType.CRAFTING && matcher.match(1, null)) {
-                    if(!craftableRecipes.containsKey(recipe) || craftableRecipes.get(recipe)!!.size > recipeHistory.size) {
-                        craftableRecipes.put(recipe, recipeHistory)
-                        //Uma nova recipe
-                        val outputCount = recipe.output.count
-                        //How many should we craft?
-                        val howMany = min(matcher.maximumCrafts, MathHelper.ceil(outputCount / 9f))
-                        repeat(howMany) { times ->
+                if(matcher.match(1, null) && (!craftableRecipes.containsKey(recipe) || craftableRecipes[recipe]!!.size > recipeHistory.size)) {
+                    craftableRecipes[recipe] = recipeHistory
+                    newCraftableRecipes.add(recipe)
+                }
+            }
+        }
+        newCraftableRecipes.forEach { matchedRecipe ->
+            CraftingBenchClient.recipeToNewRecipeTree.getOrDefault(matchedRecipe, mutableSetOf()).forEach { nextRecipe ->
+                if(!craftableRecipes.containsKey(nextRecipe) || craftableRecipes[nextRecipe]!!.size < recipeHistory.size-2) {
+                    if(nextRecipe.id == Identifier("birch_boat")) {
+                        1+1
+                    }
+                    CraftingBenchClient.newRecipeToRecipeTree.getOrDefault(nextRecipe, mutableMapOf()).forEach { (qnt, requiredRecipe) ->
+                        val matcher = recipeFinder.Matcher(requiredRecipe)
+                        if (matcher.match(qnt, null)) {
                             val newFakeInventory = SimpleInventory(fakeInventory.size())
-                            //TODO: this loops can be optimized
                             repeat(newFakeInventory.size()) { slot ->
                                 newFakeInventory.setStack(slot, fakeInventory.getStack(slot).copy())
                             }
-                            val missingIngredients = recipe.ingredients.toMutableList()
-                            repeat(times+1) {
+                            repeat(qnt+1) {
+                                val missingIngredients = matchedRecipe.ingredients.toMutableList()
                                 matcher.requiredItems.forEach { itemId ->
                                     val missingIngredientsIterator = missingIngredients.iterator()
                                     while (missingIngredientsIterator.hasNext()) {
@@ -78,19 +91,19 @@ class CraftingBenchBlock(settings: Settings) : Block(settings) {
                                         }
                                     }
                                 }
+                                newFakeInventory.addStack(matchedRecipe.output)
                             }
-                            newFakeInventory.addStack(recipe.output)
                             val newRecipeHistory = recipeHistory.toMutableList()
-                            repeat(times + 1) {
-                                newRecipeHistory.add(recipe)
+                            repeat(qnt+1) {
+                                newRecipeHistory.add(matchedRecipe)
                             }
-                            populateRecipes(recipeBook, craftableRecipes, newRecipeHistory, newFakeInventory, depth + 1)
+                            populateRecipes(CraftingBenchClient.recipeToNewRecipeTree.getOrDefault(requiredRecipe, mutableSetOf()), recipeBook, craftableRecipes, newRecipeHistory, newFakeInventory, depth + qnt)
                         }
                     }
                 }
             }
         }
-
+        return craftableRecipes
     }
 
 
