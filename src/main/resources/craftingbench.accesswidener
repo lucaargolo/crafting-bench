@@ -1,1 +1,4 @@
 accessWidener v1 named
+accessible class net/minecraft/recipe/RecipeMatcher$Matcher
+accessible field net/minecraft/recipe/RecipeMatcher$Matcher requiredItems [I
+accessible method net/minecraft/recipe/RecipeMatcher$Matcher getMaximumCrafts ()I
