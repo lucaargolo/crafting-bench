@@ -10,7 +10,6 @@ import net.minecraft.inventory.Inventories
 import net.minecraft.inventory.SimpleInventory
 import net.minecraft.item.ItemStack
 import net.minecraft.nbt.NbtCompound
-import net.minecraft.nbt.NbtElement
 import net.minecraft.screen.ScreenHandler
 import net.minecraft.screen.ScreenHandlerContext
 import net.minecraft.text.Text
@@ -57,7 +56,6 @@ class CraftingBenchBlockEntity(blockPos: BlockPos, blockState: BlockState) : Loc
 
     override fun getContainerName(): Text = CraftingBenchBlock.TITLE
 
-    //Inventory methods
     override fun clear() = inventory.clear()
     override fun size() = inventory.size()
     override fun isEmpty() = inventory.isEmpty

@@ -8,7 +8,7 @@ import net.minecraft.item.ItemStack
 import net.minecraft.recipe.RecipeMatcher
 import net.minecraft.screen.ScreenHandler
 
-class SimpleCraftingInventory(val handler: ScreenHandler, width: Int, height: Int, val simpleInventory: SimpleInventory): CraftingInventory(handler, width, height) {
+class SimpleCraftingInventory(private val handler: ScreenHandler, width: Int, height: Int, private val simpleInventory: SimpleInventory): CraftingInventory(handler, width, height) {
 
     override fun size(): Int {
         return simpleInventory.stacks.size
@@ -26,15 +26,15 @@ class SimpleCraftingInventory(val handler: ScreenHandler, width: Int, height: In
         return false
     }
 
-    override fun getStack(slot: Int): ItemStack? {
+    override fun getStack(slot: Int): ItemStack {
         return if (slot >= size()) ItemStack.EMPTY else simpleInventory.stacks[slot]
     }
 
-    override fun removeStack(slot: Int): ItemStack? {
+    override fun removeStack(slot: Int): ItemStack {
         return Inventories.removeStack(simpleInventory.stacks, slot)
     }
 
-    override fun removeStack(slot: Int, amount: Int): ItemStack? {
+    override fun removeStack(slot: Int, amount: Int): ItemStack {
         val itemStack = Inventories.splitStack(simpleInventory.stacks, slot, amount)
         if (!itemStack.isEmpty) {
             markDirty()
@@ -43,7 +43,7 @@ class SimpleCraftingInventory(val handler: ScreenHandler, width: Int, height: In
         return itemStack
     }
 
-    override fun setStack(slot: Int, stack: ItemStack?) {
+    override fun setStack(slot: Int, stack: ItemStack) {
         simpleInventory.stacks[slot] = stack
         handler.onContentChanged(this)
         markDirty()
@@ -53,7 +53,7 @@ class SimpleCraftingInventory(val handler: ScreenHandler, width: Int, height: In
         simpleInventory.markDirty()
     }
 
-    override fun canPlayerUse(player: PlayerEntity?): Boolean {
+    override fun canPlayerUse(player: PlayerEntity): Boolean {
         return true
     }
 
