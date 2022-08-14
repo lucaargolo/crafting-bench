@@ -1,5 +1,9 @@
 package io.github.lucaargolo.craftingbench.client
 
+import io.github.lucaargolo.craftingbench.common.block.BlockCompendium
+import io.github.lucaargolo.craftingbench.common.blockentity.BlockEntityCompendium
+import io.github.lucaargolo.craftingbench.common.item.ItemCompendium
+import io.github.lucaargolo.craftingbench.common.screenhandler.ScreenHandlerCompendium
 import it.unimi.dsi.fastutil.ints.IntList
 import net.fabricmc.api.ClientModInitializer
 import net.minecraft.recipe.Recipe
@@ -45,7 +49,10 @@ object CraftingBenchClient: ClientModInitializer {
     }
 
     override fun onInitializeClient() {
-
+        BlockCompendium.initializeClient()
+        ItemCompendium.initializeClient()
+        BlockEntityCompendium.initializeClient()
+        ScreenHandlerCompendium.initializeClient()
     }
 
 }

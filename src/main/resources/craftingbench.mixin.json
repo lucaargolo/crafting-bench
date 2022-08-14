@@ -4,6 +4,7 @@
   "package": "io.github.lucaargolo.craftingbench.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
+    "CraftingInventoryAccessor"
   ],
   "client": [
     "ClientRecipeBookMixin"
