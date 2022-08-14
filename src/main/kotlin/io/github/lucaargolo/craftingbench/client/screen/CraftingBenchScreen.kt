@@ -59,7 +59,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
         //TODO: If mouse is over button, let you drag it!
         if(scrollable && mouseX in (x+94.0..x+100.0) && mouseY in (y+19.0..y+158.0) && button == 0) {
-            scrollableOffset = MathHelper.lerp((mouseY-19-y)/120, 0.0, excessHeight)
+            scrollableOffset = MathHelper.lerp((mouseY-19-y)/139, 0.0, excessHeight)
             updateButtonsHeight()
             return true
         }
