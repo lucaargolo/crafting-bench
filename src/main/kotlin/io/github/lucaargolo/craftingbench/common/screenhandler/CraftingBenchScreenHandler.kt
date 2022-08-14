@@ -65,6 +65,7 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
         (playerInventory.player as? ClientPlayerEntity)?.also(::populateRecipes)
     }
 
+    //TODO: Alguma coisa está errada. Ta aparecendo coisa de mais, i pray to god that it'll be an easy fix (são longuinhoooo)
     private fun populateRecipes(player: ClientPlayerEntity) {
         val recipeBook = player.recipeBook
         val fakeInventory = SimpleInventory(player.inventory.size()+inventory.size()+craftingInventory.size())

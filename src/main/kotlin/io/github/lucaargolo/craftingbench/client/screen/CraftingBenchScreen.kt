@@ -93,6 +93,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
             DrawableHelper.fill(matrices, x+5, y+19, x+100, y+158, 0xFF8B8B8B.toInt())
             DrawableHelper.fill(matrices, x+93, y+158, x+94, y+159, 0xFFFFFFFF.toInt())
         }
+        //TODO: Muito provável que seja possível usar um framebuffer pra esconder o excesso dos botões
         children().forEach {
             (it as? ButtonWidget)?.let { btn ->
                 if((y..y+155).contains(btn.y)) {
