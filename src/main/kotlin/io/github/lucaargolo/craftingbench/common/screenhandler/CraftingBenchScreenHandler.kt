@@ -36,6 +36,8 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
     private val craftingInventory = SimpleCraftingInventory(this, 3, 3, simpleCraftingInventory)
     private val result = CraftingResultInventory()
 
+    var hasCraft = false
+
     init {
         addSlot(CraftingResultSlot(playerInventory.player, craftingInventory, result, 0, 283+105, 35))
 
@@ -128,7 +130,7 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
                             repeat(newFakeInventory.size()) { slot ->
                                 newFakeInventory.setStack(slot, fakeInventory.getStack(slot).copy())
                             }
-                            repeat(qnt+1) {
+                            repeat(qnt) {
                                 val missingIngredients = matchedRecipe.ingredients.toMutableList()
                                 matcher.requiredItems.forEach { itemId ->
                                     val missingIngredientsIterator = missingIngredients.iterator()
@@ -142,7 +144,7 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
                                 newFakeInventory.addStack(matchedRecipe.output)
                             }
                             val newRecipeHistory = recipeHistory.toMutableList()
-                            repeat(qnt+1) {
+                            repeat(qnt) {
                                 newRecipeHistory.add(matchedRecipe)
                             }
                             populateRecipes(CraftingBenchClient.recipeToNewRecipeTree.getOrDefault(requiredRecipe, mutableSetOf()), recipeBook, craftableRecipes, newRecipeHistory, newFakeInventory, depth + qnt)
