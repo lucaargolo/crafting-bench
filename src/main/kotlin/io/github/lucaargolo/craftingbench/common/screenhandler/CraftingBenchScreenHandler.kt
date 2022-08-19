@@ -24,7 +24,6 @@ import net.minecraft.screen.ScreenHandlerContext
 import net.minecraft.screen.slot.CraftingResultSlot
 import net.minecraft.screen.slot.Slot
 import net.minecraft.server.network.ServerPlayerEntity
-import net.minecraft.util.Identifier
 import net.minecraft.util.registry.Registry
 import net.minecraft.world.World
 import kotlin.concurrent.thread
@@ -171,7 +170,7 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
     }
 
     private fun populateRecipes(testRecipes: Iterable<Recipe<*>>, recipeBook: ClientRecipeBook, craftableRecipes: MutableMap<Recipe<*>, List<Recipe<*>>>, recipeHistory: List<Recipe<*>>, fakeInventory: SimpleInventory, depth: Int): MutableMap<Recipe<*>, List<Recipe<*>>> {
-        if(depth > 10) {
+        if(depth > 1000) {
             return craftableRecipes
         }
         val recipeFinder = RecipeMatcher()
@@ -191,41 +190,71 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
         newCraftableRecipes.forEach { matchedRecipe ->
             CraftingBenchClient.recipeToNewRecipeTree.getOrDefault(matchedRecipe, mutableSetOf()).forEach outer@{ nextRecipe ->
                 if(!craftableRecipes.containsKey(nextRecipe) || craftableRecipes[nextRecipe]!!.size < recipeHistory.size-2) {
+                    val outerNewFakeInventory = SimpleInventory(fakeInventory.size())
+                    repeat(outerNewFakeInventory.size()) { slot ->
+                        outerNewFakeInventory.setStack(slot, fakeInventory.getStack(slot).copy())
+                    }
+                    val outerNewRecipeHistory = recipeHistory.toMutableList()
                     CraftingBenchClient.newRecipeToRecipeTree.getOrDefault(nextRecipe, mutableMapOf()).forEach inner@{ (requiredRecipe, qnt) ->
                         val matcher = recipeFinder.Matcher(requiredRecipe)
                         if (matcher.match(qnt, null)) {
-                            val newFakeInventory = SimpleInventory(fakeInventory.size())
-                            repeat(newFakeInventory.size()) { slot ->
-                                newFakeInventory.setStack(slot, fakeInventory.getStack(slot).copy())
+                            val innerNewFakeInventory = SimpleInventory(fakeInventory.size())
+                            repeat(innerNewFakeInventory.size()) { slot ->
+                                innerNewFakeInventory.setStack(slot, fakeInventory.getStack(slot).copy())
                             }
-                            var recipeComplete = true
+                            val outerHoldingStacks = mutableListOf<ItemStack>()
+                            var outerRecipeComplete = true
+                            var innerRecipeComplete = true
                             repeat(qnt) {
-                                val missingIngredients = matchedRecipe.ingredients.toMutableList()
+                                val outerMissingIngredients = matchedRecipe.ingredients.toMutableList()
+                                val innerMissingIngredients = matchedRecipe.ingredients.toMutableList()
                                 matcher.requiredItems.forEach { itemId ->
-                                    val missingIngredientsIterator = missingIngredients.iterator()
-                                    while (missingIngredientsIterator.hasNext()) {
-                                        val missingIngredient = missingIngredientsIterator.next()
-                                        if (missingIngredient.matchingItemIds.contains(itemId) && newFakeInventory.removeItem(Registry.ITEM.get(itemId), 1).count == 1) {
-                                            missingIngredientsIterator.remove()
+                                    val innerMissingIngredientsIterator = innerMissingIngredients.iterator()
+                                    while (innerMissingIngredientsIterator.hasNext()) {
+                                        val missingIngredient = innerMissingIngredientsIterator.next()
+                                        if (missingIngredient.matchingItemIds.contains(itemId) && innerNewFakeInventory.removeItem(Registry.ITEM.get(itemId), 1).count == 1) {
+                                            innerMissingIngredientsIterator.remove()
+                                        }
+                                    }
+                                    val outerMissingIngredientsIterator = outerMissingIngredients.iterator()
+                                    while (outerMissingIngredientsIterator.hasNext()) {
+                                        val missingIngredient = outerMissingIngredientsIterator.next()
+                                        if (missingIngredient.matchingItemIds.contains(itemId) && outerNewFakeInventory.removeItem(Registry.ITEM.get(itemId), 1).count == 1) {
+                                            outerMissingIngredientsIterator.remove()
+                                            outerHoldingStacks.add(ItemStack(Registry.ITEM.get(itemId), 1))
                                         }
                                     }
                                 }
-                                if(missingIngredients.any { it != Ingredient.EMPTY }) {
-                                    recipeComplete = false
+                                if(innerMissingIngredients.any { it != Ingredient.EMPTY }) {
+                                    innerRecipeComplete = false
                                 }else {
-                                    newFakeInventory.addStack(matchedRecipe.output)
+                                    innerNewFakeInventory.addStack(matchedRecipe.output)
+                                }
+                                if(outerMissingIngredients.any { it != Ingredient.EMPTY }) {
+                                    outerRecipeComplete = false
+                                }else {
+                                    outerNewFakeInventory.addStack(matchedRecipe.output)
                                 }
                             }
-                            if(!recipeComplete) {
-                                return@inner
+                            if(outerRecipeComplete) {
+                                repeat(qnt) {
+                                    outerNewRecipeHistory.add(matchedRecipe)
+                                }
+                            }else{
+                                outerHoldingStacks.forEach {
+                                    outerNewFakeInventory.addStack(it)
+                                }
                             }
-                            val newRecipeHistory = recipeHistory.toMutableList()
-                            repeat(qnt) {
-                                newRecipeHistory.add(matchedRecipe)
+                            if(innerRecipeComplete) {
+                                val innerNewRecipeHistory = recipeHistory.toMutableList()
+                                repeat(qnt) {
+                                    innerNewRecipeHistory.add(matchedRecipe)
+                                }
+                                populateRecipes(CraftingBenchClient.recipeToNewRecipeTree.getOrDefault(requiredRecipe, mutableSetOf()), recipeBook, craftableRecipes, innerNewRecipeHistory, innerNewFakeInventory, depth + 1)
                             }
-                            populateRecipes(CraftingBenchClient.recipeToNewRecipeTree.getOrDefault(requiredRecipe, mutableSetOf()), recipeBook, craftableRecipes, newRecipeHistory, newFakeInventory, depth + qnt)
                         }
                     }
+                    populateRecipes(listOf(nextRecipe), recipeBook, craftableRecipes, outerNewRecipeHistory, outerNewFakeInventory, depth + 1)
                 }
             }
         }

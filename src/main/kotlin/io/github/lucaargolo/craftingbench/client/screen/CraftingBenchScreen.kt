@@ -9,7 +9,6 @@ import net.minecraft.client.gl.SimpleFramebuffer
 import net.minecraft.client.gui.DrawableHelper
 import net.minecraft.client.gui.screen.ingame.HandledScreen
 import net.minecraft.client.gui.widget.ButtonWidget
-import net.minecraft.client.gui.widget.ButtonWidget.PressAction
 import net.minecraft.client.gui.widget.TextFieldWidget
 import net.minecraft.client.item.TooltipContext
 import net.minecraft.client.render.*
@@ -258,7 +257,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         searchBar?.tick()
         children().forEach {
             (it as? CraftingButtonWidget)?.let { btn ->
-                if(btn.active) {
+                if((y..y+158).contains(btn.y)) {
                     btn.tick()
                 }
             }
@@ -308,13 +307,15 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
             if(!hasAllItems) {
                 notEnoughItems = true
                 active = false
+            }else{
+                notEnoughItems = false
             }
         }
 
         override fun renderButton(matrices: MatrixStack, mouseX: Int, mouseY: Int, delta: Float) {
             super.renderButton(matrices, mouseX, mouseY, delta)
             val excessOffset = if(requiredItems.size / 3 > 0) {
-                val excess = (requiredItems.size / 3) + 1
+                val excess = MathHelper.floor((requiredItems.size / 3.0) - 0.01) + 1
                 (CraftingBenchClient.internalTick % (excess*30))/30
             } else 0
             requiredItems.subList(excessOffset*3, ((excessOffset+1)*3).coerceAtMost(requiredItems.size)).forEachIndexed { index, stack ->
