@@ -4,10 +4,11 @@
   "package": "io.github.lucaargolo.craftingbench.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
-    "CraftingInventoryAccessor"
+    "CraftingInventoryAccessor",
+    "RecipeManagerInvoker"
   ],
   "client": [
-    "ClientRecipeBookMixin"
+    "ClientPlayNetworkHandlerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

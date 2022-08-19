@@ -4,15 +4,13 @@ import io.github.lucaargolo.craftingbench.common.block.BlockCompendium
 import io.github.lucaargolo.craftingbench.common.blockentity.BlockEntityCompendium
 import io.github.lucaargolo.craftingbench.common.item.ItemCompendium
 import io.github.lucaargolo.craftingbench.common.screenhandler.ScreenHandlerCompendium
+import io.github.lucaargolo.craftingbench.mixin.RecipeManagerInvoker
 import it.unimi.dsi.fastutil.ints.IntList
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
-import net.minecraft.recipe.Recipe
-import net.minecraft.recipe.RecipeType
-import net.minecraft.util.Identifier
+import net.minecraft.recipe.*
 import net.minecraft.util.math.MathHelper
 import net.minecraft.util.registry.Registry
-import kotlin.system.measureTimeMillis
 
 object CraftingBenchClient: ClientModInitializer {
 
@@ -23,18 +21,22 @@ object CraftingBenchClient: ClientModInitializer {
 
     var internalTick = 0
 
-    fun onRecipeBookReload(recipes: Iterable<Recipe<*>>) {
-        recipeToNewRecipeTree.clear()
+    fun onSynchronizeRecipes(recipeManager: RecipeManager) {
         recipeIngredientMap.clear()
+        recipeToNewRecipeTree.clear()
+        newRecipeToRecipeTree.clear()
+        val recipes = (recipeManager as RecipeManagerInvoker).invokeGetAllOfType(RecipeType.CRAFTING).values.sortedBy { it.id }
         recipes.forEach { recipe ->
-            if (recipe.type == RecipeType.CRAFTING) {
+            if (recipe is ShapedRecipe || recipe is ShapelessRecipe) {
                 recipe.ingredients.forEach { ingredient ->
-                    recipeIngredientMap.getOrPut(ingredient.matchingItemIds, ::mutableSetOf).add(recipe)
+                    if(!ingredient.isEmpty) {
+                        recipeIngredientMap.getOrPut(ingredient.matchingItemIds, ::mutableSetOf).add(recipe)
+                    }
                 }
             }
         }
         recipes.forEach { recipe ->
-            if(recipe.type == RecipeType.CRAFTING) {
+            if(recipe is ShapedRecipe || recipe is ShapelessRecipe) {
                 recipeIngredientMap.forEach { (intList, recipeSet) ->
                     if (intList.contains(Registry.ITEM.getRawId(recipe.output.item))) {
                         recipeSet.forEach { setRecipe ->
