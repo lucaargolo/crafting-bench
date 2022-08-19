@@ -15,6 +15,7 @@ import net.minecraft.inventory.Inventory
 import net.minecraft.inventory.SimpleInventory
 import net.minecraft.item.ItemStack
 import net.minecraft.network.packet.s2c.play.ScreenHandlerSlotUpdateS2CPacket
+import net.minecraft.recipe.Ingredient
 import net.minecraft.recipe.Recipe
 import net.minecraft.recipe.RecipeMatcher
 import net.minecraft.recipe.RecipeType
@@ -23,6 +24,7 @@ import net.minecraft.screen.ScreenHandlerContext
 import net.minecraft.screen.slot.CraftingResultSlot
 import net.minecraft.screen.slot.Slot
 import net.minecraft.server.network.ServerPlayerEntity
+import net.minecraft.util.Identifier
 import net.minecraft.util.registry.Registry
 import net.minecraft.world.World
 import kotlin.concurrent.thread
@@ -32,9 +34,76 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
 
     constructor(syncId: Int, playerInventory: PlayerInventory, context: ScreenHandlerContext): this(syncId, playerInventory, SimpleInventory(9), SimpleInventory(28), context)
 
-    val craftableRecipes = mutableMapOf<Recipe<*>, List<Recipe<*>>>()
     private val craftingInventory = SimpleCraftingInventory(this, 3, 3, simpleCraftingInventory)
     private val result = CraftingResultInventory()
+
+    val craftableRecipes = mutableMapOf<Recipe<*>, List<Recipe<*>>>()
+    val combinedInventory = object: Inventory {
+        override fun clear() {
+            playerInventory.clear()
+            inventory.clear()
+            craftingInventory.clear()
+        }
+
+        override fun size(): Int {
+            return playerInventory.size()+inventory.size()+craftingInventory.size()
+        }
+
+        override fun isEmpty(): Boolean {
+            return playerInventory.isEmpty && inventory.isEmpty && craftingInventory.isEmpty
+        }
+
+        override fun getStack(slot: Int): ItemStack {
+            return when {
+                slot < playerInventory.size() -> playerInventory.getStack(slot)
+                slot < playerInventory.size()+inventory.size() -> inventory.getStack(slot)
+                else -> craftingInventory.getStack(slot)
+            }
+        }
+
+        override fun removeStack(slot: Int, amount: Int): ItemStack {
+            return when {
+                slot < playerInventory.size() -> playerInventory.removeStack(slot, amount)
+                slot < playerInventory.size()+inventory.size() -> inventory.removeStack(slot, amount)
+                else -> craftingInventory.removeStack(slot, amount)
+            }
+        }
+
+        override fun removeStack(slot: Int): ItemStack {
+            return when {
+                slot < playerInventory.size() -> playerInventory.removeStack(slot)
+                slot < playerInventory.size()+inventory.size() -> inventory.removeStack(slot)
+                else -> craftingInventory.removeStack(slot)
+            }
+        }
+
+        override fun setStack(slot: Int, stack: ItemStack) {
+            when {
+                slot < playerInventory.size() -> playerInventory.setStack(slot, stack)
+                slot < playerInventory.size()+inventory.size() -> inventory.setStack(slot, stack)
+                else -> craftingInventory.setStack(slot, stack)
+            }
+        }
+
+        override fun markDirty() {
+            playerInventory.markDirty()
+            inventory.markDirty()
+            craftingInventory.markDirty()
+        }
+
+        override fun canPlayerUse(player: PlayerEntity): Boolean {
+            return playerInventory.canPlayerUse(player) && inventory.canPlayerUse(player) && craftingInventory.canPlayerUse(player)
+        }
+
+    }
+    val recipeFinder: RecipeMatcher by lazy {
+        RecipeMatcher().also {
+            repeat(combinedInventory.size()) { slot ->
+                it.addUnenchantedInput(combinedInventory.getStack(slot))
+            }
+        }
+    }
+
 
     var hasCraft = false
 
@@ -67,7 +136,6 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
         (playerInventory.player as? ClientPlayerEntity)?.also(::populateRecipes)
     }
 
-    //TODO: Alguma coisa está errada. Ta aparecendo coisa de mais, i pray to god that it'll be an easy fix (são longuinhoooo)
     private fun populateRecipes(player: ClientPlayerEntity) {
         val recipeBook = player.recipeBook
         val fakeInventory = SimpleInventory(player.inventory.size()+inventory.size()+craftingInventory.size())
@@ -121,15 +189,16 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
             }
         }
         newCraftableRecipes.forEach { matchedRecipe ->
-            CraftingBenchClient.recipeToNewRecipeTree.getOrDefault(matchedRecipe, mutableSetOf()).forEach { nextRecipe ->
+            CraftingBenchClient.recipeToNewRecipeTree.getOrDefault(matchedRecipe, mutableSetOf()).forEach outer@{ nextRecipe ->
                 if(!craftableRecipes.containsKey(nextRecipe) || craftableRecipes[nextRecipe]!!.size < recipeHistory.size-2) {
-                    CraftingBenchClient.newRecipeToRecipeTree.getOrDefault(nextRecipe, mutableMapOf()).forEach { (qnt, requiredRecipe) ->
+                    CraftingBenchClient.newRecipeToRecipeTree.getOrDefault(nextRecipe, mutableMapOf()).forEach inner@{ (requiredRecipe, qnt) ->
                         val matcher = recipeFinder.Matcher(requiredRecipe)
                         if (matcher.match(qnt, null)) {
                             val newFakeInventory = SimpleInventory(fakeInventory.size())
                             repeat(newFakeInventory.size()) { slot ->
                                 newFakeInventory.setStack(slot, fakeInventory.getStack(slot).copy())
                             }
+                            var recipeComplete = true
                             repeat(qnt) {
                                 val missingIngredients = matchedRecipe.ingredients.toMutableList()
                                 matcher.requiredItems.forEach { itemId ->
@@ -141,7 +210,14 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
                                         }
                                     }
                                 }
-                                newFakeInventory.addStack(matchedRecipe.output)
+                                if(missingIngredients.any { it != Ingredient.EMPTY }) {
+                                    recipeComplete = false
+                                }else {
+                                    newFakeInventory.addStack(matchedRecipe.output)
+                                }
+                            }
+                            if(!recipeComplete) {
+                                return@inner
                             }
                             val newRecipeHistory = recipeHistory.toMutableList()
                             repeat(qnt) {
