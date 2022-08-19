@@ -157,7 +157,7 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
         }
         thread {
             val time = measureTimeMillis {
-                val newCraftableRecipes = populateRecipes(allRecipes, recipeBook, mutableMapOf(), listOf(), fakeInventory, 0)
+                val newCraftableRecipes = populateRecipes(allRecipes, recipeBook, mutableMapOf(), listOf(), fakeInventory)
                 val client = MinecraftClient.getInstance()
                 client.execute {
                     craftableRecipes.clear()
@@ -169,10 +169,7 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
         }
     }
 
-    private fun populateRecipes(testRecipes: Iterable<Recipe<*>>, recipeBook: ClientRecipeBook, craftableRecipes: MutableMap<Recipe<*>, List<Recipe<*>>>, recipeHistory: List<Recipe<*>>, fakeInventory: SimpleInventory, depth: Int): MutableMap<Recipe<*>, List<Recipe<*>>> {
-        if(depth > 1000) {
-            return craftableRecipes
-        }
+    private fun populateRecipes(testRecipes: Iterable<Recipe<*>>, recipeBook: ClientRecipeBook, craftableRecipes: MutableMap<Recipe<*>, List<Recipe<*>>>, recipeHistory: List<Recipe<*>>, fakeInventory: SimpleInventory): MutableMap<Recipe<*>, List<Recipe<*>>> {
         val recipeFinder = RecipeMatcher()
         repeat(fakeInventory.size()) { slot ->
             recipeFinder.addUnenchantedInput(fakeInventory.getStack(slot))
@@ -250,11 +247,11 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
                                 repeat(qnt) {
                                     innerNewRecipeHistory.add(matchedRecipe)
                                 }
-                                populateRecipes(CraftingBenchClient.recipeToNewRecipeTree.getOrDefault(requiredRecipe, mutableSetOf()), recipeBook, craftableRecipes, innerNewRecipeHistory, innerNewFakeInventory, depth + 1)
+                                populateRecipes(CraftingBenchClient.recipeToNewRecipeTree.getOrDefault(requiredRecipe, mutableSetOf()), recipeBook, craftableRecipes, innerNewRecipeHistory, innerNewFakeInventory)
                             }
                         }
                     }
-                    populateRecipes(listOf(nextRecipe), recipeBook, craftableRecipes, outerNewRecipeHistory, outerNewFakeInventory, depth + 1)
+                    populateRecipes(listOf(nextRecipe), recipeBook, craftableRecipes, outerNewRecipeHistory, outerNewFakeInventory)
                 }
             }
         }
