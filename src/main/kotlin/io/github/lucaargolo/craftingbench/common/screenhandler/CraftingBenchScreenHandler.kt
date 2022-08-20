@@ -16,6 +16,8 @@ import net.minecraft.inventory.SimpleInventory
 import net.minecraft.item.ItemStack
 import net.minecraft.network.packet.s2c.play.ScreenHandlerSlotUpdateS2CPacket
 import net.minecraft.recipe.*
+import net.minecraft.recipe.book.RecipeBookCategory
+import net.minecraft.screen.AbstractRecipeScreenHandler
 import net.minecraft.screen.ScreenHandler
 import net.minecraft.screen.ScreenHandlerContext
 import net.minecraft.screen.slot.CraftingResultSlot
@@ -26,7 +28,7 @@ import net.minecraft.world.World
 import kotlin.concurrent.thread
 import kotlin.system.measureTimeMillis
 
-class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: PlayerInventory, simpleCraftingInventory: SimpleInventory, private val inventory: SimpleInventory, private val context: ScreenHandlerContext) : ScreenHandler(ScreenHandlerCompendium.CRAFTING_BENCH, syncId) {
+class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: PlayerInventory, simpleCraftingInventory: SimpleInventory, private val inventory: SimpleInventory, private val context: ScreenHandlerContext) : AbstractRecipeScreenHandler<CraftingInventory>(ScreenHandlerCompendium.CRAFTING_BENCH, syncId) {
 
     constructor(syncId: Int, playerInventory: PlayerInventory, context: ScreenHandlerContext): this(syncId, playerInventory, SimpleInventory(9), SimpleInventory(28), context)
 
@@ -52,32 +54,32 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
         override fun getStack(slot: Int): ItemStack {
             return when {
                 slot < playerInventory.size() -> playerInventory.getStack(slot)
-                slot < playerInventory.size()+inventory.size() -> inventory.getStack(slot)
-                else -> craftingInventory.getStack(slot)
+                slot < playerInventory.size()+inventory.size() -> inventory.getStack(slot-playerInventory.size())
+                else -> craftingInventory.getStack(slot-playerInventory.size()+inventory.size())
             }
         }
 
         override fun removeStack(slot: Int, amount: Int): ItemStack {
             return when {
                 slot < playerInventory.size() -> playerInventory.removeStack(slot, amount)
-                slot < playerInventory.size()+inventory.size() -> inventory.removeStack(slot, amount)
-                else -> craftingInventory.removeStack(slot, amount)
+                slot < playerInventory.size()+inventory.size() -> inventory.removeStack(slot-playerInventory.size(), amount)
+                else -> craftingInventory.removeStack(slot-playerInventory.size()+inventory.size(), amount)
             }
         }
 
         override fun removeStack(slot: Int): ItemStack {
             return when {
                 slot < playerInventory.size() -> playerInventory.removeStack(slot)
-                slot < playerInventory.size()+inventory.size() -> inventory.removeStack(slot)
-                else -> craftingInventory.removeStack(slot)
+                slot < playerInventory.size()+inventory.size() -> inventory.removeStack(slot-playerInventory.size())
+                else -> craftingInventory.removeStack(slot-playerInventory.size()+inventory.size())
             }
         }
 
         override fun setStack(slot: Int, stack: ItemStack) {
             when {
                 slot < playerInventory.size() -> playerInventory.setStack(slot, stack)
-                slot < playerInventory.size()+inventory.size() -> inventory.setStack(slot, stack)
-                else -> craftingInventory.setStack(slot, stack)
+                slot < playerInventory.size()+inventory.size() -> inventory.setStack(slot-playerInventory.size(), stack)
+                else -> craftingInventory.setStack(slot-playerInventory.size()+inventory.size(), stack)
             }
         }
 
@@ -100,15 +102,18 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
         }
     }
 
-
-    var hasCraft = false
-
     init {
         addSlot(CraftingResultSlot(playerInventory.player, craftingInventory, result, 0, 283+105, 35))
 
         repeat(3) { n ->
             repeat(3) { m ->
                 addSlot(Slot(craftingInventory, m + n * 3, 189 + 105 + m * 18, 17 + n * 18))
+            }
+        }
+
+        repeat(4) { n ->
+            repeat(7) { m ->
+                addSlot(Slot(inventory, m + n * 7, 184 + 105 + m * 18, 84 + n*18))
             }
         }
 
@@ -122,13 +127,11 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
             addSlot(Slot(playerInventory, n, 8 + 105 + n * 18, 142))
         }
 
-        repeat(4) { n ->
-            repeat(7) { m ->
-                addSlot(Slot(inventory, m + n * 7, 184 + 105 + m * 18, 84 + n*18))
-            }
-        }
-
         onContentChanged(null)
+    }
+
+    override fun updateSlotStacks(revision: Int, stacks: MutableList<ItemStack>?, cursorStack: ItemStack?) {
+        super.updateSlotStacks(revision, stacks, cursorStack)
         (playerInventory.player as? ClientPlayerEntity)?.also(::populateRecipes)
     }
 
@@ -240,13 +243,87 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
         }
     }
 
-
     override fun transferSlot(player: PlayerEntity?, index: Int): ItemStack {
-        return ItemStack.EMPTY
+        var itemStack = ItemStack.EMPTY
+        val slot = slots[index]
+        if (slot.hasStack()) {
+            val itemStack2 = slot.stack
+            itemStack = itemStack2.copy()
+            if (index == 0) {
+                context.run { world, _ -> itemStack2.item.onCraft(itemStack2, world, player) }
+                if (!insertItem(itemStack2, 10, slots.size, true)) {
+                    return ItemStack.EMPTY
+                }
+                slot.onQuickTransfer(itemStack2, itemStack)
+            }else if(index < 10) {
+                if (!insertItem(itemStack2, 10, slots.size, true)) {
+                    return ItemStack.EMPTY
+                }
+            }else if (index < 38) {
+                if (!insertItem(itemStack2, 38, slots.size, true)) {
+                    return ItemStack.EMPTY
+                }
+            } else if (!insertItem(itemStack2, 10, 38, false)) {
+                return ItemStack.EMPTY
+            }
+            if (itemStack2.isEmpty) {
+                slot.stack = ItemStack.EMPTY
+            } else {
+                slot.markDirty()
+            }
+
+            if (itemStack2.count == itemStack.count) {
+                return ItemStack.EMPTY
+            }
+
+            slot.onTakeItem(player, itemStack2)
+            if (index == 0) {
+                player?.dropItem(itemStack2, false)
+            }
+        }
+        return itemStack
     }
 
     override fun canUse(player: PlayerEntity): Boolean {
         return canUse(context, player, BlockCompendium.CRAFTING_BENCH)
+    }
+
+    override fun populateRecipeFinder(finder: RecipeMatcher) {
+        inventory.provideRecipeInputs(finder)
+        craftingInventory.provideRecipeInputs(finder)
+    }
+
+    override fun clearCraftingSlots() {
+        craftingInventory.clear()
+        result.clear()
+    }
+
+    override fun matches(recipe: Recipe<in CraftingInventory?>): Boolean {
+        return recipe.matches(craftingInventory, playerInventory.player.world)
+    }
+    
+    override fun getCraftingResultSlotIndex(): Int {
+        return 0
+    }
+
+    override fun getCraftingWidth(): Int {
+        return craftingInventory.width
+    }
+
+    override fun getCraftingHeight(): Int {
+        return craftingInventory.height
+    }
+
+    override fun getCraftingSlotCount(): Int {
+        return 10
+    }
+
+    override fun getCategory(): RecipeBookCategory? {
+        return RecipeBookCategory.CRAFTING
+    }
+
+    override fun canInsertIntoSlot(index: Int): Boolean {
+        return index != craftingResultSlotIndex
     }
 
 }

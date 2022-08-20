@@ -18,7 +18,9 @@ import net.minecraft.inventory.Inventory
 import net.minecraft.inventory.SimpleInventory
 import net.minecraft.item.Item
 import net.minecraft.item.ItemStack
+import net.minecraft.network.packet.c2s.play.CraftRequestC2SPacket
 import net.minecraft.recipe.Recipe
+import net.minecraft.screen.slot.SlotActionType
 import net.minecraft.text.Text
 import net.minecraft.util.math.MathHelper
 import net.minecraft.util.registry.Registry
@@ -26,7 +28,7 @@ import org.lwjgl.glfw.GLFW
 
 class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: PlayerInventory, title: Text) : HandledScreen<CraftingBenchScreenHandler>(handler, inventory, title) {
 
-    private val buttonRenderFramebuffer = SimpleFramebuffer(1, 1, false, MinecraftClient.IS_SYSTEM_MAC)
+    private val buttonRenderFramebuffer = SimpleFramebuffer(1, 1, true, MinecraftClient.IS_SYSTEM_MAC)
     private val heightBtnReference = linkedMapOf<ButtonWidget, Int>()
 
     private var scrollableOffset = 0.0
@@ -37,7 +39,11 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
 
     private var searchBar: TextFieldWidget? = null
 
-    private var selectedBtn: CraftingButtonWidget? = null
+    private var selectedCrafting: CraftingButtonWidget? = null
+
+    private var crafting = false
+    private var craftingProgress = 0
+    private var craftingPartProgress = 0
 
     init {
         backgroundWidth = 421
@@ -96,7 +102,11 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
             val btn = CraftingButtonWidget(handler, x+5, y+19+(index*20), if(scrollable) 88 else 95, 20, entry.key, entry.value) { button ->
                 val craftingButton = button as? CraftingButtonWidget ?: return@CraftingButtonWidget
                 craftingButton.selected = true
-                selectedBtn?.selected = false
+                craftingButton.active = false
+                selectedCrafting?.selected = false
+                selectedCrafting?.active = true
+                selectedCrafting = craftingButton
+                craftingProgress = 0
                 craftingButton.recipeHistory.forEach {
                     println(it.id)
                 }
@@ -120,6 +130,10 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
     override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
         return if(draggingScroll) {
             draggingScroll = false
+            true
+        }else if (crafting){
+            crafting = false
+            craftingPartProgress = 0
             true
         }else{
             super.mouseReleased(mouseX, mouseY, button)
@@ -152,6 +166,11 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
                 updateButtonsHeight()
             }
             return true
+        }else if(selectedCrafting != null && mouseX in (x+166.0)..(x+220.0) && mouseY in (y+38.0)..(y+65.0)) {
+            crafting = true
+            if(craftingProgress == 2 + (selectedCrafting?.recipeHistory?.size ?: 0)*2) {
+                craftingProgress = 0
+            }
         }
         return super.mouseClicked(mouseX, mouseY, button)
     }
@@ -189,6 +208,9 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         buttonRenderFramebuffer.beginWrite(true)
         RenderSystem.clearColor(0.0f, 0.0f, 0.0f, 0.0f)
         RenderSystem.clear(16384, MinecraftClient.IS_SYSTEM_MAC)
+        RenderSystem.clear(256, MinecraftClient.IS_SYSTEM_MAC)
+        zOffset = 100
+        itemRenderer.zOffset = 100.0f
         children().forEach {
             (it as? CraftingButtonWidget)?.let { btn ->
                 if((y..y+158).contains(btn.y)) {
@@ -201,6 +223,8 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
                 }
             }
         }
+        itemRenderer.zOffset = 0f
+        zOffset = 0
         buttonRenderFramebuffer.endWrite()
         client?.framebuffer?.beginWrite(true)
         buttonRenderFramebuffer.beginRead()
@@ -241,7 +265,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
                 DrawableHelper.fill(matrices, x + 94, y + offset.toInt(), x + 100, y + offset.toInt() + 27, -2130706433)
             }
         }
-        if(handler.hasCraft) {
+        if(selectedCrafting != null) {
             if(mouseX in (x+166)..(x+220) && mouseY in (y+38)..(y+65)) {
                 drawTexture(matrices, x + 166, y + 38, 421f, 54f, 54, 27, 512, 256)
             }else{
@@ -250,6 +274,10 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         }else{
             drawTexture(matrices, x + 166, y + 38, 421f, 0f, 54, 27, 512, 256)
         }
+        val partProgress = MathHelper.lerp(craftingPartProgress/20f, 0f, 52f)
+        drawTexture(matrices, x + 167, y + 26, 106f, 184f, MathHelper.floor(partProgress), 5, 512, 256)
+        val progress = MathHelper.lerp(craftingProgress/(((selectedCrafting?.recipeHistory?.size ?: 0)*2f)+2), 0f, 124f)
+        drawTexture(matrices, x + 131, y + 17, 106f, 176f, MathHelper.floor(progress), 7, 512, 256)
     }
 
     override fun handledScreenTick() {
@@ -259,6 +287,39 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
             (it as? CraftingButtonWidget)?.let { btn ->
                 if((y..y+158).contains(btn.y)) {
                     btn.tick()
+                }
+            }
+        }
+        if(selectedCrafting?.notEnoughItems == true) {
+            selectedCrafting?.selected = false
+            selectedCrafting = null
+            craftingProgress = 0
+            craftingPartProgress = 0
+            crafting = false
+        }
+        if(crafting) {
+            val selectedCrafting = selectedCrafting ?: return
+            val recipe = selectedCrafting.recipe
+            val recipeHistory = selectedCrafting.recipeHistory
+            if(craftingPartProgress++ == 20) {
+                craftingPartProgress = 0
+            }
+            if(craftingPartProgress == 0) {
+                //if theres no crafting add crafting
+                //else do crafting
+                if(handler.slots[0].hasStack() && !handler.slots[0].stack.isEmpty) {
+                    client?.interactionManager?.clickSlot(handler.syncId, 0, 0, SlotActionType.QUICK_MOVE, client?.player)
+                }else{
+                    val nextRecipeIndex = craftingProgress/2
+                    val nextRecipe = if(nextRecipeIndex >= recipeHistory.size) recipe else recipeHistory[nextRecipeIndex]
+                    client?.networkHandler?.sendPacket(CraftRequestC2SPacket(handler.syncId, nextRecipe, false))
+                }
+                if(++craftingProgress == 2 + recipeHistory.size*2) {
+                    crafting = false
+                    if(selectedCrafting.notEnoughItems) {
+                        selectedCrafting.selected = false
+                        this.selectedCrafting = null
+                    }
                 }
             }
         }
@@ -310,6 +371,10 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
             }else{
                 notEnoughItems = false
             }
+        }
+
+        override fun getYImage(hovered: Boolean): Int {
+            return if(selected) 2 else super.getYImage(hovered)
         }
 
         override fun renderButton(matrices: MatrixStack, mouseX: Int, mouseY: Int, delta: Float) {
