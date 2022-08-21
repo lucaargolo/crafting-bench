@@ -21,6 +21,7 @@ import net.minecraft.item.Item
 import net.minecraft.item.ItemStack
 import net.minecraft.network.packet.c2s.play.CraftRequestC2SPacket
 import net.minecraft.recipe.Recipe
+import net.minecraft.recipe.RecipeMatcher
 import net.minecraft.screen.slot.SlotActionType
 import net.minecraft.sound.SoundEvents
 import net.minecraft.text.Text
@@ -49,6 +50,8 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
     private var crafting = false
     private var craftingProgress = 0
     private var craftingPartProgress = 0
+
+    private var recipeFinder = RecipeMatcher()
 
     init {
         backgroundWidth = 421
@@ -126,6 +129,12 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
                 }
             }
             heightBtnReference[btn] = btn.y
+        }
+    }
+
+    fun updateRequiredItems() {
+        children().forEach {
+            (it as? CraftingButtonWidget)?.updateRequiredItems = true
         }
     }
 
@@ -332,41 +341,69 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         }
     }
 
-    class CraftingButtonWidget(private val handler: CraftingBenchScreenHandler, x: Int, y: Int, width: Int, height: Int, val recipe: Recipe<*>, val recipeHistory: List<Recipe<*>>, onPressAction: PressAction) : ButtonWidget(x, y, width, height, Text.literal(""), onPressAction) {
+    inner class CraftingButtonWidget(private val handler: CraftingBenchScreenHandler, x: Int, y: Int, width: Int, height: Int, val recipe: Recipe<*>, val recipeHistory: List<Recipe<*>>, onPressAction: PressAction) : ButtonWidget(x, y, width, height, Text.literal(""), onPressAction) {
+
+        private val client = MinecraftClient.getInstance()
+
+        private val requiredItems = mutableListOf<ItemStack>()
+        private var hasRequiredItems = true
+        var updateRequiredItems = true
 
         var selected = false
         var notEnoughItems = false
 
-        private val client = MinecraftClient.getInstance()
-        private val requiredItems: List<ItemStack> by lazy {
-            SimpleInventory(handler.combinedInventory.size()).also {
-                (0..recipeHistory.size).forEach { index ->
-                    val recipe = if (index == recipeHistory.size) recipe else recipeHistory[index]
-                    val matcher = handler.recipeFinder.Matcher(recipe)
-                    val missingIngredients = recipe.ingredients.toMutableList()
-                    matcher.requiredItems.forEach { itemId ->
-                        val item = Registry.ITEM.get(itemId)
-                        val missingIngredientsIterator = missingIngredients.iterator()
-                        while (missingIngredientsIterator.hasNext()) {
-                            val missingIngredient = missingIngredientsIterator.next()
-                            if (missingIngredient.matchingItemIds.contains(itemId) && handler.combinedInventory.fakeRemoveItem(item, 1).count == 1) {
-                                it.addStack(ItemStack(item, 1))
-                                missingIngredientsIterator.remove()
-                            }
-                        }
-                    }
-                }
-            }.clearToList()
-        }
-
         fun tick() {
             var hasAllItems = true
+            if(updateRequiredItems) {
+                hasRequiredItems = true
+                updateRequiredItems = false
+                requiredItems.clear()
+                requiredItems.addAll(SimpleInventory(handler.combinedInventory.size()).also {
+                    val fakeCombinedInventory = SimpleInventory(handler.combinedInventory.size())
+                    repeat(handler.combinedInventory.size()) { slot ->
+                        fakeCombinedInventory.addStack(handler.combinedInventory.getStack(slot).copy())
+                    }
+                    val auxInv = SimpleInventory(handler.combinedInventory.size())
+                    (0..recipeHistory.size).forEach { index ->
+                        val recipe = if (index == recipeHistory.size) recipe else recipeHistory[index]
+                        recipeFinder.clear()
+                        repeat(fakeCombinedInventory.size()) { slot ->
+                            recipeFinder.addUnenchantedInput(fakeCombinedInventory.getStack(slot))
+                        }
+                        repeat(auxInv.size()) { slot ->
+                            recipeFinder.addUnenchantedInput(auxInv.getStack(slot))
+                        }
+                        val matcher = recipeFinder.Matcher(recipe)
+                        val missingIngredients = recipe.ingredients.toMutableList()
+                        matcher.requiredItems.forEach { itemId ->
+                            val item = Registry.ITEM.get(itemId)
+                            val missingIngredientsIterator = missingIngredients.iterator()
+                            while (missingIngredientsIterator.hasNext()) {
+                                val missingIngredient = missingIngredientsIterator.next()
+                                if (missingIngredient.matchingItemIds.contains(itemId)) {
+                                    if (fakeCombinedInventory.removeItem(item, 1).count == 1) {
+                                        it.addStack(ItemStack(item, 1))
+                                        missingIngredientsIterator.remove()
+                                    } else if (auxInv.removeItem(item, 1).count == 1) {
+                                        missingIngredientsIterator.remove()
+                                    }
+                                }
+                            }
+                        }
+                        if(missingIngredients.filter { !it.isEmpty }.isNotEmpty()) {
+                            hasRequiredItems = false
+                        }else{
+                            auxInv.addStack(recipe.output.copy())
+                        }
+                    }
+                }.clearToList())
+            }
             requiredItems.forEach { itemStack ->
                 if(handler.combinedInventory.fakeRemoveItem(itemStack.item, itemStack.count).count != itemStack.count) {
                     hasAllItems = false
                 }
             }
-            if(!hasAllItems) {
+            if(!hasAllItems || !hasRequiredItems) {
                 notEnoughItems = true
                 active = false
             }else{

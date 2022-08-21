@@ -20,11 +20,13 @@ import net.minecraft.recipe.book.RecipeBookCategory
 import net.minecraft.screen.AbstractRecipeScreenHandler
 import net.minecraft.screen.ScreenHandler
 import net.minecraft.screen.ScreenHandlerContext
+import net.minecraft.screen.ScreenHandlerListener
 import net.minecraft.screen.slot.CraftingResultSlot
 import net.minecraft.screen.slot.Slot
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.util.registry.Registry
 import net.minecraft.world.World
+import java.util.function.Supplier
 import kotlin.concurrent.thread
 import kotlin.system.measureTimeMillis
 
@@ -40,91 +42,78 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
         override fun clear() {
             playerInventory.clear()
             inventory.clear()
-            craftingInventory.clear()
         }
 
         override fun size(): Int {
-            return playerInventory.size()+inventory.size()+craftingInventory.size()
+            return playerInventory.size()+inventory.size()
         }
 
         override fun isEmpty(): Boolean {
-            return playerInventory.isEmpty && inventory.isEmpty && craftingInventory.isEmpty
+            return playerInventory.isEmpty && inventory.isEmpty
         }
 
         override fun getStack(slot: Int): ItemStack {
             return when {
                 slot < playerInventory.size() -> playerInventory.getStack(slot)
-                slot < playerInventory.size()+inventory.size() -> inventory.getStack(slot-playerInventory.size())
-                else -> craftingInventory.getStack(slot-playerInventory.size()+inventory.size())
+                else -> inventory.getStack(slot-playerInventory.size())
             }
         }
 
         override fun removeStack(slot: Int, amount: Int): ItemStack {
             return when {
                 slot < playerInventory.size() -> playerInventory.removeStack(slot, amount)
-                slot < playerInventory.size()+inventory.size() -> inventory.removeStack(slot-playerInventory.size(), amount)
-                else -> craftingInventory.removeStack(slot-playerInventory.size()+inventory.size(), amount)
+                else -> inventory.removeStack(slot-playerInventory.size(), amount)
             }
         }
 
         override fun removeStack(slot: Int): ItemStack {
             return when {
                 slot < playerInventory.size() -> playerInventory.removeStack(slot)
-                slot < playerInventory.size()+inventory.size() -> inventory.removeStack(slot-playerInventory.size())
-                else -> craftingInventory.removeStack(slot-playerInventory.size()+inventory.size())
+                else -> inventory.removeStack(slot-playerInventory.size())
             }
         }
 
         override fun setStack(slot: Int, stack: ItemStack) {
             when {
                 slot < playerInventory.size() -> playerInventory.setStack(slot, stack)
-                slot < playerInventory.size()+inventory.size() -> inventory.setStack(slot-playerInventory.size(), stack)
-                else -> craftingInventory.setStack(slot-playerInventory.size()+inventory.size(), stack)
+                else -> inventory.setStack(slot-playerInventory.size(), stack)
             }
         }
 
         override fun markDirty() {
             playerInventory.markDirty()
             inventory.markDirty()
-            craftingInventory.markDirty()
         }
 
         override fun canPlayerUse(player: PlayerEntity): Boolean {
-            return playerInventory.canPlayerUse(player) && inventory.canPlayerUse(player) && craftingInventory.canPlayerUse(player)
+            return playerInventory.canPlayerUse(player) && inventory.canPlayerUse(player)
         }
 
-    }
-    val recipeFinder: RecipeMatcher by lazy {
-        RecipeMatcher().also {
-            repeat(combinedInventory.size()) { slot ->
-                it.addUnenchantedInput(combinedInventory.getStack(slot))
-            }
-        }
     }
 
     init {
-        addSlot(CraftingResultSlot(playerInventory.player, craftingInventory, result, 0, 283+105, 35))
+        addSlot(CraftingResultSlot(playerInventory.player, craftingInventory, result, 0, 283 + 105, 35))
 
         repeat(3) { n ->
             repeat(3) { m ->
-                addSlot(Slot(craftingInventory, m + n * 3, 189 + 105 + m * 18, 17 + n * 18))
+                addSlot(CraftingBenchSlot(craftingInventory, m + n * 3, 189 + 105 + m * 18, 17 + n * 18))
             }
         }
 
         repeat(4) { n ->
             repeat(7) { m ->
-                addSlot(Slot(inventory, m + n * 7, 184 + 105 + m * 18, 84 + n*18))
+                addSlot(CraftingBenchSlot(inventory, m + n * 7, 184 + 105 + m * 18, 84 + n * 18))
             }
         }
 
         repeat(3) { n ->
             repeat(9) { m ->
-                addSlot(Slot(playerInventory, m + n * 9 + 9, 8 + 105 + m * 18, 84 + n*18))
+                addSlot(CraftingBenchSlot(playerInventory, m + n * 9 + 9, 8 + 105 + m * 18, 84 + n * 18))
             }
         }
 
         repeat(9) { n ->
-            addSlot(Slot(playerInventory, n, 8 + 105 + n * 18, 142))
+            addSlot(CraftingBenchSlot(playerInventory, n, 8 + 105 + n * 18, 142))
         }
 
         onContentChanged(null)
@@ -132,7 +121,10 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
 
     override fun updateSlotStacks(revision: Int, stacks: MutableList<ItemStack>?, cursorStack: ItemStack?) {
         super.updateSlotStacks(revision, stacks, cursorStack)
-        (playerInventory.player as? ClientPlayerEntity)?.also(::populateRecipes)
+        val player = playerInventory.player
+        if(player.world.isClient) {
+            (playerInventory.player as? ClientPlayerEntity)?.also(::populateRecipes)
+        }
     }
 
     fun populateRecipes(player: ClientPlayerEntity) {
@@ -147,7 +139,7 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
             fakeInventory.setStack(player.inventory.size()+inventory.size()+slot, craftingInventory.getStack(slot).copy())
         }
         val recipes = (player.networkHandler.recipeManager as RecipeManagerInvoker).invokeGetAllOfType(RecipeType.CRAFTING).values
-        thread {
+        thread(name = "Populate-Recipes") {
             val newCraftableRecipes = populateRecipes(recipes, mutableMapOf(), listOf(), fakeInventory)
             val client = MinecraftClient.getInstance()
             client.execute {
@@ -289,7 +281,9 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
     }
 
     override fun populateRecipeFinder(finder: RecipeMatcher) {
-        inventory.provideRecipeInputs(finder)
+        repeat(inventory.size()) { slot ->
+            finder.addUnenchantedInput(inventory.getStack(slot))
+        }
         craftingInventory.provideRecipeInputs(finder)
     }
 
@@ -324,6 +318,16 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
 
     override fun canInsertIntoSlot(index: Int): Boolean {
         return index != craftingResultSlotIndex
+    }
+
+    inner class CraftingBenchSlot(inventory: Inventory?, index: Int, x: Int, y: Int) : Slot(inventory, index, x, y) {
+        override fun markDirty() {
+            if(playerInventory.player.world.isClient) {
+                val client = MinecraftClient.getInstance()
+                (client.currentScreen as? CraftingBenchScreen)?.updateRequiredItems()
+            }
+            super.markDirty()
+        }
     }
 
 }
