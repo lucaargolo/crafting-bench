@@ -26,9 +26,7 @@ import net.minecraft.screen.slot.Slot
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.util.registry.Registry
 import net.minecraft.world.World
-import java.util.function.Supplier
 import kotlin.concurrent.thread
-import kotlin.system.measureTimeMillis
 
 class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: PlayerInventory, simpleCraftingInventory: SimpleInventory, val inventory: SimpleInventory, private val context: ScreenHandlerContext) : AbstractRecipeScreenHandler<CraftingInventory>(ScreenHandlerCompendium.CRAFTING_BENCH, syncId) {
 
@@ -92,6 +90,13 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
     }
 
     init {
+        addListener(object: ScreenHandlerListener {
+            override fun onSlotUpdate(handler: ScreenHandler, slotId: Int, stack: ItemStack) {
+                if(slotId in (1..9)) onContentChanged(null)
+            }
+            override fun onPropertyUpdate(handler: ScreenHandler?, property: Int, value: Int) = Unit
+        })
+
         addSlot(CraftingResultSlot(playerInventory.player, craftingInventory, result, 0, 283 + 105, 35))
 
         repeat(3) { n ->
