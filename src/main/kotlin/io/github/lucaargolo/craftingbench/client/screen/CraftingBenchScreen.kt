@@ -12,6 +12,7 @@ import net.minecraft.client.gui.widget.ButtonWidget
 import net.minecraft.client.gui.widget.TextFieldWidget
 import net.minecraft.client.item.TooltipContext
 import net.minecraft.client.render.*
+import net.minecraft.client.sound.PositionedSoundInstance
 import net.minecraft.client.util.math.MatrixStack
 import net.minecraft.entity.player.PlayerInventory
 import net.minecraft.inventory.Inventory
@@ -21,12 +22,16 @@ import net.minecraft.item.ItemStack
 import net.minecraft.network.packet.c2s.play.CraftRequestC2SPacket
 import net.minecraft.recipe.Recipe
 import net.minecraft.screen.slot.SlotActionType
+import net.minecraft.sound.SoundEvents
 import net.minecraft.text.Text
 import net.minecraft.util.math.MathHelper
+import net.minecraft.util.math.random.Random
 import net.minecraft.util.registry.Registry
 import org.lwjgl.glfw.GLFW
 
 class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: PlayerInventory, title: Text) : HandledScreen<CraftingBenchScreenHandler>(handler, inventory, title) {
+
+    private val random = Random.create()
 
     private val buttonRenderFramebuffer = SimpleFramebuffer(1, 1, true, MinecraftClient.IS_SYSTEM_MAC)
     private val heightBtnReference = linkedMapOf<ButtonWidget, Int>()
@@ -107,9 +112,6 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
                 selectedCrafting?.active = true
                 selectedCrafting = craftingButton
                 craftingProgress = 0
-                craftingButton.recipeHistory.forEach {
-                    println(it.id)
-                }
             }
             this.addSelectableChild(btn)
             if(btn.y + btn.height > y+158) {
@@ -160,6 +162,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         if(scrollable && mouseX in (x+94.0..x+100.0) && mouseY in (y+19.0..y+158.0) && button == 0) {
             val offset = MathHelper.lerp(scrollableOffset / excessHeight, 19.0, 131.0)
             if(mouseX in (x+94.0)..(x+100.0) && mouseY in (y+offset)..(y+offset+27.0)) {
+                client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.UI_BUTTON_CLICK, 1.0F))
                 draggingScroll = true
             }else{
                 scrollableOffset = MathHelper.lerp((mouseY-19-y)/139, 0.0, excessHeight)
@@ -167,6 +170,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
             }
             return true
         }else if(selectedCrafting != null && mouseX in (x+166.0)..(x+220.0) && mouseY in (y+38.0)..(y+65.0)) {
+            client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.UI_BUTTON_CLICK, 1.0F))
             crafting = true
             if(craftingProgress == 2 + (selectedCrafting?.recipeHistory?.size ?: 0)*2) {
                 craftingProgress = 0
@@ -302,8 +306,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
                 craftingPartProgress = 0
             }
             if(craftingPartProgress == 0) {
-                //if theres no crafting add crafting
-                //else do crafting
+                client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.BLOCK_ANVIL_USE, random.nextFloat() * 0.1f + 0.9f))
                 if(handler.slots[0].hasStack() && !handler.slots[0].stack.isEmpty) {
                     client?.interactionManager?.clickSlot(handler.syncId, 0, 0, SlotActionType.QUICK_MOVE, client?.player)
                 }else{
@@ -313,6 +316,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
                 }
                 if(++craftingProgress == 2 + recipeHistory.size*2) {
                     crafting = false
+                    client?.player?.let(handler::populateRecipes)
                     if(selectedCrafting.notEnoughItems) {
                         selectedCrafting.selected = false
                         this.selectedCrafting = null

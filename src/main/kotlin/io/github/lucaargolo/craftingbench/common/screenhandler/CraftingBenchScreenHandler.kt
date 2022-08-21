@@ -28,7 +28,7 @@ import net.minecraft.world.World
 import kotlin.concurrent.thread
 import kotlin.system.measureTimeMillis
 
-class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: PlayerInventory, simpleCraftingInventory: SimpleInventory, private val inventory: SimpleInventory, private val context: ScreenHandlerContext) : AbstractRecipeScreenHandler<CraftingInventory>(ScreenHandlerCompendium.CRAFTING_BENCH, syncId) {
+class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: PlayerInventory, simpleCraftingInventory: SimpleInventory, val inventory: SimpleInventory, private val context: ScreenHandlerContext) : AbstractRecipeScreenHandler<CraftingInventory>(ScreenHandlerCompendium.CRAFTING_BENCH, syncId) {
 
     constructor(syncId: Int, playerInventory: PlayerInventory, context: ScreenHandlerContext): this(syncId, playerInventory, SimpleInventory(9), SimpleInventory(28), context)
 
@@ -135,7 +135,7 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
         (playerInventory.player as? ClientPlayerEntity)?.also(::populateRecipes)
     }
 
-    private fun populateRecipes(player: ClientPlayerEntity) {
+    fun populateRecipes(player: ClientPlayerEntity) {
         val fakeInventory = SimpleInventory(player.inventory.size()+inventory.size()+craftingInventory.size())
         repeat(player.inventory.size()) { slot ->
             fakeInventory.setStack(slot, player.inventory.getStack(slot).copy())
@@ -148,17 +148,17 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
         }
         val recipes = (player.networkHandler.recipeManager as RecipeManagerInvoker).invokeGetAllOfType(RecipeType.CRAFTING).values
         thread {
-            val time = measureTimeMillis {
-                val newCraftableRecipes = populateRecipes(recipes, mutableMapOf(), listOf(), fakeInventory)
-                val client = MinecraftClient.getInstance()
-                client.execute {
-                    craftableRecipes.clear()
-                    craftableRecipes.putAll(newCraftableRecipes)
-                    (client.currentScreen as? CraftingBenchScreen)?.init(client, client.window.scaledWidth, client.window.scaledHeight)
-                    println(craftableRecipes.size)
+            val newCraftableRecipes = populateRecipes(recipes, mutableMapOf(), listOf(), fakeInventory)
+            val client = MinecraftClient.getInstance()
+            client.execute {
+                craftableRecipes.clear()
+                newCraftableRecipes.forEach { (recipe, recipeHistory) ->
+                    if(player.recipeBook.contains(recipe)) {
+                        craftableRecipes[recipe] = recipeHistory
+                    }
                 }
+                (client.currentScreen as? CraftingBenchScreen)?.init(client, client.window.scaledWidth, client.window.scaledHeight)
             }
-            println("Whatever this is took $time ms")
         }
     }
 
