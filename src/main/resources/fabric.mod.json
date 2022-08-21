@@ -3,14 +3,14 @@
   "id": "craftingbench",
   "version": "${version}",
   "name": "Crafting Bench",
-  "description": "",
+  "description": "A utility mod that adds a custom crafting table with semi-automatic crafting.",
   "authors": [
     "D4rkness_King"
   ],
   "contact": {
-    "homepage": "https://modrinth.com/mod/craftingbench",
-    "sources": "https://github.com/lucaargolo/craftingbench",
-    "issues": "https://github.com/lucaargolo/craftingbench/issues"
+    "homepage": "https://modrinth.com/mod/crafting-bench",
+    "sources": "https://github.com/lucaargolo/crafting-bench",
+    "issues": "https://github.com/lucaargolo/crafting-bench/issues"
   },
   "license": "Mozilla Public License 2.0",
   "icon": "assets/craftingbench/icon.png",

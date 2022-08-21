@@ -290,12 +290,9 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
                 }
             }
         }
-        if(selectedCrafting?.notEnoughItems == true) {
+        if(selectedCrafting?.notEnoughItems == true && !crafting && craftingProgress == 0) {
             selectedCrafting?.selected = false
             selectedCrafting = null
-            craftingProgress = 0
-            craftingPartProgress = 0
-            crafting = false
         }
         if(crafting) {
             val selectedCrafting = selectedCrafting ?: return
