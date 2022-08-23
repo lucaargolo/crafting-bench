@@ -7,48 +7,145 @@ import io.github.lucaargolo.craftingbench.common.screenhandler.ScreenHandlerComp
 import io.github.lucaargolo.craftingbench.mixin.RecipeManagerInvoker
 import it.unimi.dsi.fastutil.ints.IntList
 import net.fabricmc.api.ClientModInitializer
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.minecraft.recipe.*
 import net.minecraft.util.math.MathHelper
 import net.minecraft.util.registry.Registry
+import kotlin.system.measureTimeMillis
 
 object CraftingBenchClient: ClientModInitializer {
 
-    private val recipeIngredientMap: MutableMap<IntList, MutableSet<Recipe<*>>> = mutableMapOf()
+    val recipeTrees: MutableMap<CraftingRecipe, MutableList<Pair<List<CraftingRecipe>, List<IntList>>>> = mutableMapOf()
 
-    val recipeToNewRecipeTree: MutableMap<Recipe<*>, MutableSet<Recipe<*>>> = mutableMapOf()
-    val newRecipeToRecipeTree: MutableMap<Recipe<*>, MutableMap<Recipe<*>, Int>> = mutableMapOf()
-
-    var internalTick = 0
+    private val recipesYouCanUseToDoItem: MutableMap<Int, MutableMap<CraftingRecipe, Int>> = mutableMapOf()
+    private val recipesYouCanDoWithItem: MutableMap<Int, MutableSet<CraftingRecipe>> = mutableMapOf()
 
     fun onSynchronizeRecipes(recipeManager: RecipeManager) {
-        recipeIngredientMap.clear()
-        recipeToNewRecipeTree.clear()
-        newRecipeToRecipeTree.clear()
-        val recipes = (recipeManager as RecipeManagerInvoker).invokeGetAllOfType(RecipeType.CRAFTING).values.sortedBy { it.id }
-        recipes.forEach { recipe ->
-            if (recipe is ShapedRecipe || recipe is ShapelessRecipe) {
-                recipe.ingredients.forEach { ingredient ->
-                    if(!ingredient.isEmpty) {
-                        recipeIngredientMap.getOrPut(ingredient.matchingItemIds, ::mutableSetOf).add(recipe)
-                    }
-                }
-            }
-        }
-        recipes.forEach { recipe ->
-            if(recipe is ShapedRecipe || recipe is ShapelessRecipe) {
-                recipeIngredientMap.forEach { (intList, recipeSet) ->
-                    if (intList.contains(Registry.ITEM.getRawId(recipe.output.item))) {
-                        recipeSet.forEach { setRecipe ->
-                            val ingredientsNeeded = setRecipe.ingredients.filter { it.matchingItemIds == intList }.size
-                            val craftsNeeded = MathHelper.ceil(ingredientsNeeded/recipe.output.count.toFloat())
-                            newRecipeToRecipeTree.getOrPut(setRecipe, ::mutableMapOf)[recipe] = craftsNeeded
-                            recipeToNewRecipeTree.getOrPut(recipe, ::mutableSetOf).add(setRecipe)
+        val time = measureTimeMillis {
+            recipeTrees.clear()
+            recipesYouCanDoWithItem.clear()
+            recipesYouCanUseToDoItem.clear()
+            val recipes = (recipeManager as RecipeManagerInvoker).invokeGetAllOfType(RecipeType.CRAFTING).values
+            recipes.forEach { recipe ->
+                if (recipe is ShapedRecipe || recipe is ShapelessRecipe) {
+                    recipe.ingredients.forEach { ingredient ->
+                        if (!ingredient.isEmpty) {
+                            ingredient.matchingItemIds.forEach { itemId ->
+                                recipesYouCanDoWithItem.getOrPut(itemId, ::mutableSetOf).add(recipe)
+                            }
                         }
                     }
+                    recipesYouCanUseToDoItem.getOrPut(Registry.ITEM.getRawId(recipe.output.item), ::mutableMapOf)[recipe] = recipe.output.count
+                }
+            }
+            recipes.forEach(::populateRecipeTree)
+        }
+        println("Constructed recipe trees in $time ms")
+    }
+
+    private fun populateRecipeTree(recipe: CraftingRecipe, depth: Int = 0): MutableList<Pair<List<CraftingRecipe>, List<IntList>>> {
+        return recipeTrees[recipe] ?: let{
+            val recipeTree = mutableListOf<Pair<List<CraftingRecipe>, List<IntList>>>()
+            val ingredients = recipe.ingredients.map(Ingredient::getMatchingItemIds)
+            //First path
+            recipeTree.add(Pair(listOf(recipe), ingredients))
+            //Recursive paths
+            val itemQntMap = mutableMapOf<Int, Int>()
+            ingredients.forEach { ingredient ->
+                ingredient.forEach { itemId ->
+                    itemQntMap[itemId] = (itemQntMap[itemId] ?: 0) + 1
+                }
+            }
+            val allRequiredRecipes = mutableMapOf<CraftingRecipe, Int>()
+            itemQntMap.forEach { (item, qnt) ->
+                recipesYouCanUseToDoItem[item]?.let { requiredRecipes ->
+                    requiredRecipes.mapValues { entry -> MathHelper.ceil(qnt / entry.value.toFloat()) }.forEach { (a, b) ->
+                        allRequiredRecipes[a] = (allRequiredRecipes[a] ?: 0) + b
+                    }
+                }
+            }
+            recipeTree.addAll(populateRecipeTree(listOf(recipe), ingredients, allRequiredRecipes, depth + 1))
+            //The end
+            recipeTrees[recipe] = recipeTree
+            recipeTree
+        }
+    }
+
+    private fun populateRecipeTree(originalRecipeHistory: List<CraftingRecipe>, originalIngredients: List<IntList>, requiredRecipes: Map<CraftingRecipe, Int>, depth: Int = 0): List<Pair<List<CraftingRecipe>, List<IntList>>> {
+        val recipeTree = mutableListOf<Pair<List<CraftingRecipe>, List<IntList>>>()
+        if(depth > 8) {
+            return recipeTree
+        }
+
+        requiredRecipes.forEach { (recipe, qnt) ->
+            val recipeHistory = originalRecipeHistory.toMutableList()
+            val ingredients = originalIngredients.toMutableList()
+
+            val outputQnt = recipe.output.count * qnt
+            var outputExcess = outputQnt
+            val outputItem = Registry.ITEM.getRawId(recipe.output.item)
+
+            repeat(qnt) {
+                recipeHistory.add(recipe)
+            }
+
+            val ingredientsIterator = ingredients.iterator()
+            while (ingredientsIterator.hasNext()) {
+                val ingredient = ingredientsIterator.next()
+                if(outputExcess > 0 && ingredient.contains(outputItem)) {
+                    ingredientsIterator.remove()
+                    outputExcess--
+                }
+            }
+            repeat(qnt) {
+                ingredients.addAll(recipe.ingredients.map(Ingredient::getMatchingItemIds))
+            }
+
+            recipeHistory.reverse()
+            recipeTree.add(Pair(recipeHistory, ingredients))
+
+            val itemQntMap = mutableMapOf<Int, Int>()
+            ingredients.forEach { ingredient ->
+                ingredient.forEach { itemId ->
+                    itemQntMap[itemId] = (itemQntMap[itemId] ?: 0) + 1
+                }
+            }
+            val allRequiredRecipes = mutableMapOf<CraftingRecipe, Int>()
+            itemQntMap.forEach { (item, qnt) ->
+                recipesYouCanUseToDoItem[item]?.let { requiredRecipes ->
+                    requiredRecipes.mapValues { entry -> MathHelper.ceil(qnt/entry.value.toFloat()) }.forEach { (a, b) ->
+                        allRequiredRecipes[a] = (allRequiredRecipes[a] ?: 0) + b
+                    }
+                }
+            }
+
+            allRequiredRecipes.forEach { (requiredRecipe, requiredQnt) ->
+                populateRecipeTree(requiredRecipe, depth).forEach { (innerRecipeHistory, innerIngredients) ->
+                    val combinedRecipeHistory = mutableListOf<CraftingRecipe>()
+                    repeat(requiredQnt) {
+                        combinedRecipeHistory.addAll(innerRecipeHistory)
+                    }
+                    combinedRecipeHistory.addAll(recipeHistory)
+                    val innerOutputQnt = requiredRecipe.output.count * requiredQnt
+                    var innerOutputExcess = innerOutputQnt
+                    val innerOutputItem = Registry.ITEM.getRawId(requiredRecipe.output.item)
+                    val combinedIngredients = ingredients.toMutableList()
+                    val combinedIngredientsIterator = combinedIngredients.iterator()
+                    while (combinedIngredientsIterator.hasNext()) {
+                        val ingredient = combinedIngredientsIterator.next()
+                        if(innerOutputExcess > 0 && ingredient.contains(innerOutputItem)) {
+                            combinedIngredientsIterator.remove()
+                            innerOutputExcess--
+                        }
+                    }
+                    repeat(requiredQnt) {
+                        combinedIngredients.addAll(innerIngredients)
+                    }
+                    recipeTree.add(Pair(combinedRecipeHistory, combinedIngredients))
                 }
             }
         }
+
+        return recipeTree
     }
 
     override fun onInitializeClient() {
@@ -56,9 +153,6 @@ object CraftingBenchClient: ClientModInitializer {
         ItemCompendium.initializeClient()
         BlockEntityCompendium.initializeClient()
         ScreenHandlerCompendium.initializeClient()
-        ClientTickEvents.END_WORLD_TICK.register {
-            internalTick++
-        }
     }
 
 }

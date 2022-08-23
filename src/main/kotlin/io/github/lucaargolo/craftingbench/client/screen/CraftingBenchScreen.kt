@@ -4,6 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem
 import io.github.lucaargolo.craftingbench.client.CraftingBenchClient
 import io.github.lucaargolo.craftingbench.common.screenhandler.CraftingBenchScreenHandler
 import io.github.lucaargolo.craftingbench.utils.ModIdentifier
+import it.unimi.dsi.fastutil.ints.IntList
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.gl.SimpleFramebuffer
 import net.minecraft.client.gui.DrawableHelper
@@ -46,6 +47,8 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
     private var searchBar: TextFieldWidget? = null
 
     private var selectedCrafting: CraftingButtonWidget? = null
+
+    private var internalTick = 0
 
     private var crafting = false
     private var craftingProgress = 0
@@ -107,7 +110,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
                 else -> false
             }
         }.forEachIndexed { index, entry ->
-            val btn = CraftingButtonWidget(handler, x+5, y+19+(index*20), if(scrollable) 88 else 95, 20, entry.key, entry.value) { button ->
+            val btn = CraftingButtonWidget(handler, x+5, y+19+(index*20), if(scrollable) 88 else 95, 20, entry.key, entry.value.first, entry.value.second) { button ->
                 val craftingButton = button as? CraftingButtonWidget ?: return@CraftingButtonWidget
                 craftingButton.selected = true
                 craftingButton.active = false
@@ -129,12 +132,6 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
                 }
             }
             heightBtnReference[btn] = btn.y
-        }
-    }
-
-    fun updateRequiredItems() {
-        children().forEach {
-            (it as? CraftingButtonWidget)?.updateRequiredItems = true
         }
     }
 
@@ -181,7 +178,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         }else if(selectedCrafting != null && mouseX in (x+166.0)..(x+220.0) && mouseY in (y+38.0)..(y+65.0)) {
             client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.UI_BUTTON_CLICK, 1.0F))
             crafting = true
-            if(craftingProgress == 2 + (selectedCrafting?.recipeHistory?.size ?: 0)*2) {
+            if(craftingProgress == (selectedCrafting?.recipeHistory?.size ?: 0)*2) {
                 craftingProgress = 0
             }
         }
@@ -287,9 +284,9 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         }else{
             drawTexture(matrices, x + 166, y + 38, 421f, 0f, 54, 27, 512, 256)
         }
-        val partProgress = MathHelper.lerp(craftingPartProgress/20f, 0f, 52f)
+        val partProgress = MathHelper.lerp(craftingPartProgress/10f, 0f, 52f)
         drawTexture(matrices, x + 167, y + 26, 106f, 184f, MathHelper.floor(partProgress), 5, 512, 256)
-        val progress = MathHelper.lerp(craftingProgress/(((selectedCrafting?.recipeHistory?.size ?: 0)*2f)+2), 0f, 124f)
+        val progress = MathHelper.lerp(craftingProgress/((selectedCrafting?.recipeHistory?.size ?: 0)*2f), 0f, 124f)
         drawTexture(matrices, x + 131, y + 17, 106f, 176f, MathHelper.floor(progress), 7, 512, 256)
     }
 
@@ -309,21 +306,20 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         }
         if(crafting) {
             val selectedCrafting = selectedCrafting ?: return
-            val recipe = selectedCrafting.recipe
             val recipeHistory = selectedCrafting.recipeHistory
-            if(craftingPartProgress++ == 20) {
+            if(craftingPartProgress++ == 10) {
                 craftingPartProgress = 0
             }
             if(craftingPartProgress == 0) {
-                client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.BLOCK_ANVIL_USE, random.nextFloat() * 0.1f + 0.9f))
                 if(handler.slots[0].hasStack() && !handler.slots[0].stack.isEmpty) {
                     client?.interactionManager?.clickSlot(handler.syncId, 0, 0, SlotActionType.QUICK_MOVE, client?.player)
+                    client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.BLOCK_SMITHING_TABLE_USE, random.nextFloat() * 0.1f + 0.9f))
                 }else{
-                    val nextRecipeIndex = craftingProgress/2
-                    val nextRecipe = if(nextRecipeIndex >= recipeHistory.size) recipe else recipeHistory[nextRecipeIndex]
+                    val nextRecipe = recipeHistory[craftingProgress/2]
                     client?.networkHandler?.sendPacket(CraftRequestC2SPacket(handler.syncId, nextRecipe, false))
+                    client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.ENTITY_ITEM_FRAME_ADD_ITEM, 1.0f))
                 }
-                if(++craftingProgress == 2 + recipeHistory.size*2) {
+                if(++craftingProgress == recipeHistory.size*2) {
                     crafting = false
                     client?.player?.let(handler::populateRecipes)
                     if(selectedCrafting.notEnoughItems) {
@@ -333,6 +329,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
                 }
             }
         }
+        internalTick++
     }
 
     private fun updateButtonsHeight() {
@@ -341,73 +338,42 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         }
     }
 
-    inner class CraftingButtonWidget(private val handler: CraftingBenchScreenHandler, x: Int, y: Int, width: Int, height: Int, val recipe: Recipe<*>, val recipeHistory: List<Recipe<*>>, onPressAction: PressAction) : ButtonWidget(x, y, width, height, Text.literal(""), onPressAction) {
+    inner class CraftingButtonWidget(private val handler: CraftingBenchScreenHandler, x: Int, y: Int, width: Int, height: Int, val recipe: Recipe<*>, val recipeHistory: List<Recipe<*>>, val requiredItems: List<IntList>, onPressAction: PressAction) : ButtonWidget(x, y, width, height, Text.literal(""), onPressAction) {
 
         private val client = MinecraftClient.getInstance()
 
-        private val requiredItems = mutableListOf<ItemStack>()
-        private var hasRequiredItems = true
-        var updateRequiredItems = true
+        private val requiredItemsForRender = mutableListOf<ItemStack>()
 
         var selected = false
         var notEnoughItems = false
 
         fun tick() {
-            var hasAllItems = true
-            if(updateRequiredItems) {
-                hasRequiredItems = true
-                updateRequiredItems = false
-                requiredItems.clear()
-                requiredItems.addAll(SimpleInventory(handler.combinedInventory.size()).also {
-                    val fakeCombinedInventory = SimpleInventory(handler.combinedInventory.size())
-                    repeat(handler.combinedInventory.size()) { slot ->
-                        fakeCombinedInventory.addStack(handler.combinedInventory.getStack(slot).copy())
+            requiredItemsForRender.clear()
+            val fakeInventory = SimpleInventory(handler.combinedInventory.size())
+            var hasRequiredItems = true
+            requiredItems.forEach { ingredient ->
+                var foundItem = ingredient.isEmpty()
+                ingredient.forEach testIngredient@{ itemId ->
+                    val item = Registry.ITEM.get(itemId)
+                    if(handler.combinedInventory.fakeRemoveItem(item, 1).count == 1) {
+                        fakeInventory.addStack(ItemStack(item, 1))
+                        foundItem = true
+                        return@testIngredient
                     }
-                    val auxInv = SimpleInventory(handler.combinedInventory.size())
-                    (0..recipeHistory.size).forEach { index ->
-                        val recipe = if (index == recipeHistory.size) recipe else recipeHistory[index]
-                        recipeFinder.clear()
-                        repeat(fakeCombinedInventory.size()) { slot ->
-                            recipeFinder.addUnenchantedInput(fakeCombinedInventory.getStack(slot))
-                        }
-                        repeat(auxInv.size()) { slot ->
-                            recipeFinder.addUnenchantedInput(auxInv.getStack(slot))
-                        }
-                        val matcher = recipeFinder.Matcher(recipe)
-                        val missingIngredients = recipe.ingredients.toMutableList()
-                        matcher.requiredItems.forEach { itemId ->
-                            val item = Registry.ITEM.get(itemId)
-                            val missingIngredientsIterator = missingIngredients.iterator()
-                            while (missingIngredientsIterator.hasNext()) {
-                                val missingIngredient = missingIngredientsIterator.next()
-                                if (missingIngredient.matchingItemIds.contains(itemId)) {
-                                    if (fakeCombinedInventory.removeItem(item, 1).count == 1) {
-                                        it.addStack(ItemStack(item, 1))
-                                        missingIngredientsIterator.remove()
-                                    } else if (auxInv.removeItem(item, 1).count == 1) {
-                                        missingIngredientsIterator.remove()
-                                    }
-                                }
-                            }
-                        }
-                        if(missingIngredients.filter { !it.isEmpty }.isNotEmpty()) {
-                            hasRequiredItems = false
-                        }else{
-                            auxInv.addStack(recipe.output.copy())
-                        }
-                    }
-                }.clearToList())
-            }
-            requiredItems.forEach { itemStack ->
-                if(handler.combinedInventory.fakeRemoveItem(itemStack.item, itemStack.count).count != itemStack.count) {
-                    hasAllItems = false
+                }
+                if(!foundItem) {
+                    hasRequiredItems = false
                 }
             }
-            if(!hasAllItems || !hasRequiredItems) {
+            requiredItemsForRender.addAll(fakeInventory.clearToList())
+            if(!hasRequiredItems) {
                 notEnoughItems = true
                 active = false
             }else{
                 notEnoughItems = false
+                if(!selected) {
+                    active = true
+                }
             }
         }
 
@@ -417,11 +383,11 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
 
         override fun renderButton(matrices: MatrixStack, mouseX: Int, mouseY: Int, delta: Float) {
             super.renderButton(matrices, mouseX, mouseY, delta)
-            val excessOffset = if(requiredItems.size / 3 > 0) {
-                val excess = MathHelper.floor((requiredItems.size / 3.0) - 0.01) + 1
-                (CraftingBenchClient.internalTick % (excess*30))/30
+            val excessOffset = if(requiredItemsForRender.size / 3 > 0) {
+                val excess = MathHelper.floor((requiredItemsForRender.size / 3.0) - 0.01) + 1
+                (internalTick % (excess*30))/30
             } else 0
-            requiredItems.subList(excessOffset*3, ((excessOffset+1)*3).coerceAtMost(requiredItems.size)).forEachIndexed { index, stack ->
+            requiredItemsForRender.subList(excessOffset*3, ((excessOffset+1)*3).coerceAtMost(requiredItemsForRender.size)).forEachIndexed { index, stack ->
                 client.itemRenderer.renderInGuiWithOverrides(client.player, stack, x+2+(index*18), y+2, 0)
                 client.itemRenderer.renderGuiItemOverlay(client.textRenderer, stack, x+2+(index*18), y+2, if(stack.count != 1) stack.count.toString() else "")
             }
