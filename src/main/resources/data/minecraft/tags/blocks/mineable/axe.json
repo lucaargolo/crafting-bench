@@ -1,6 +1,14 @@
 {
   "replace": false,
   "values": [
-    "craftingbench:crafting_bench"
+    "craftingbench:oak_crafting_bench",
+    "craftingbench:spruce_crafting_bench",
+    "craftingbench:birch_crafting_bench",
+    "craftingbench:jungle_crafting_bench",
+    "craftingbench:dark_oak_crafting_bench",
+    "craftingbench:acacia_crafting_bench",
+    "craftingbench:mangrove_crafting_bench",
+    "craftingbench:crimson_crafting_bench",
+    "craftingbench:warped_crafting_bench"
   ]
 }

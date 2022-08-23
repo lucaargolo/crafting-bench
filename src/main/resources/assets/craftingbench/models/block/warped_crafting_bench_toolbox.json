@@ -1,0 +1,6 @@
+{
+  "parent": "craftingbench:block/crafting_bench_toolbox",
+  "textures": {
+    "particle": "block/warped_planks"
+  }
+}

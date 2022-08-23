@@ -1,4 +1,15 @@
 {
+  "itemGroup.craftingbench.creative_tab": "Crafting Bench",
+
   "container.craftingbench.crafting_bench": "Crafting Bench",
-  "block.craftingbench.crafting_bench": "Crafting Bench"
+
+  "block.craftingbench.oak_crafting_bench": "Oak Crafting Bench",
+  "block.craftingbench.spruce_crafting_bench": "Spruce Crafting Bench",
+  "block.craftingbench.birch_crafting_bench": "Birch Crafting Bench",
+  "block.craftingbench.jungle_crafting_bench": "Jungle Crafting Bench",
+  "block.craftingbench.dark_oak_crafting_bench": "Dark Oak Crafting Bench",
+  "block.craftingbench.acacia_crafting_bench": "Acacia Crafting Bench",
+  "block.craftingbench.mangrove_crafting_bench": "Mangrove Crafting Bench",
+  "block.craftingbench.crimson_crafting_bench": "Crimson Crafting Bench",
+  "block.craftingbench.warped_crafting_bench": "Warped Crafting Bench"
 }

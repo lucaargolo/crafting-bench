@@ -1,0 +1,49 @@
+{
+  "variants": {
+    "facing=east,type=left": {
+      "model": "craftingbench:block/jungle_crafting_bench_left",
+      "y": 90
+    },
+    "facing=north,type=left": {
+      "model": "craftingbench:block/jungle_crafting_bench_left"
+    },
+    "facing=south,type=left": {
+      "model": "craftingbench:block/jungle_crafting_bench_left",
+      "y": 180
+    },
+    "facing=west,type=left": {
+      "model": "craftingbench:block/jungle_crafting_bench_left",
+      "y": 270
+    },
+    "facing=east,type=right": {
+      "model": "craftingbench:block/jungle_crafting_bench_right",
+      "y": 90
+    },
+    "facing=north,type=right": {
+      "model": "craftingbench:block/jungle_crafting_bench_right"
+    },
+    "facing=south,type=right": {
+      "model": "craftingbench:block/jungle_crafting_bench_right",
+      "y": 180
+    },
+    "facing=west,type=right": {
+      "model": "craftingbench:block/jungle_crafting_bench_right",
+      "y": 270
+    },
+    "facing=east,type=toolbox": {
+      "model": "craftingbench:block/jungle_crafting_bench_toolbox",
+      "y": 90
+    },
+    "facing=north,type=toolbox": {
+      "model": "craftingbench:block/jungle_crafting_bench_toolbox"
+    },
+    "facing=south,type=toolbox": {
+      "model": "craftingbench:block/jungle_crafting_bench_toolbox",
+      "y": 180
+    },
+    "facing=west,type=toolbox": {
+      "model": "craftingbench:block/jungle_crafting_bench_toolbox",
+      "y": 270
+    }
+  }
+}

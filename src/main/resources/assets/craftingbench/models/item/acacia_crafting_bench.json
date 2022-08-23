@@ -1,0 +1,8 @@
+{
+  "parent": "craftingbench:item/crafting_bench",
+  "textures": {
+    "particle": "block/acacia_planks",
+    "planks": "block/acacia_planks",
+    "log": "block/acacia_log"
+  }
+}

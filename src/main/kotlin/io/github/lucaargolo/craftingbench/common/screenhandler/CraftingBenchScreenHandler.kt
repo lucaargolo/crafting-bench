@@ -2,7 +2,6 @@ package io.github.lucaargolo.craftingbench.common.screenhandler
 
 import io.github.lucaargolo.craftingbench.client.CraftingBenchClient
 import io.github.lucaargolo.craftingbench.client.screen.CraftingBenchScreen
-import io.github.lucaargolo.craftingbench.common.block.BlockCompendium
 import io.github.lucaargolo.craftingbench.utils.SimpleCraftingInventory
 import it.unimi.dsi.fastutil.ints.IntArrayList
 import it.unimi.dsi.fastutil.ints.IntList
@@ -260,7 +259,9 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
     }
 
     override fun canUse(player: PlayerEntity): Boolean {
-        return canUse(context, player, BlockCompendium.CRAFTING_BENCH)
+        return context.get({ _, pos ->
+            player.squaredDistanceTo(pos.x.toDouble() + 0.5, pos.y.toDouble() + 0.5, pos.z.toDouble() + 0.5) <= 64.0
+       }, true)
     }
 
     override fun populateRecipeFinder(finder: RecipeMatcher) {

@@ -6,7 +6,7 @@
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "craftingbench:crafting_bench"
+          "name": "craftingbench:birch_crafting_bench"
         }
       ],
       "conditions": [
