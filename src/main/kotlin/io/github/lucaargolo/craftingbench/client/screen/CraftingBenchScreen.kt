@@ -1,7 +1,6 @@
 package io.github.lucaargolo.craftingbench.client.screen
 
 import com.mojang.blaze3d.systems.RenderSystem
-import io.github.lucaargolo.craftingbench.client.CraftingBenchClient
 import io.github.lucaargolo.craftingbench.common.screenhandler.CraftingBenchScreenHandler
 import io.github.lucaargolo.craftingbench.utils.ModIdentifier
 import it.unimi.dsi.fastutil.ints.IntList
@@ -22,7 +21,6 @@ import net.minecraft.item.Item
 import net.minecraft.item.ItemStack
 import net.minecraft.network.packet.c2s.play.CraftRequestC2SPacket
 import net.minecraft.recipe.Recipe
-import net.minecraft.recipe.RecipeMatcher
 import net.minecraft.screen.slot.SlotActionType
 import net.minecraft.sound.SoundEvents
 import net.minecraft.text.Text
@@ -33,28 +31,29 @@ import org.lwjgl.glfw.GLFW
 
 class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: PlayerInventory, title: Text) : HandledScreen<CraftingBenchScreenHandler>(handler, inventory, title) {
 
+    //Framebuffer used to hide some overflow from crafting buttons
+    private val craftingsRenderFramebuffer = SimpleFramebuffer(1, 1, true, MinecraftClient.IS_SYSTEM_MAC)
+
+    //Variables used for utilities
     private val random = Random.create()
+    private var internalTick = 0
 
-    private val buttonRenderFramebuffer = SimpleFramebuffer(1, 1, true, MinecraftClient.IS_SYSTEM_MAC)
-    private val heightBtnReference = linkedMapOf<ButtonWidget, Int>()
+    //Variables used for storing and showing the possible craftings
+    private var selectedCrafting: CraftingButtonWidget? = null
+    private var craftings: MutableList<CraftingButtonWidget> = mutableListOf()
+    private var searchBar: TextFieldWidget? = null
 
+    //Variables used for the scroll logic
+    private val craftingsHeight = linkedMapOf<ButtonWidget, Int>()
     private var scrollableOffset = 0.0
     private var scrollable = false
     private var excessHeight = 0.0
-
     private var draggingScroll = false
 
-    private var searchBar: TextFieldWidget? = null
-
-    private var selectedCrafting: CraftingButtonWidget? = null
-
-    private var internalTick = 0
-
+    //Variables used for the crafting logic
     private var crafting = false
     private var craftingProgress = 0
     private var craftingPartProgress = 0
-
-    private var recipeFinder = RecipeMatcher()
 
     init {
         backgroundWidth = 421
@@ -68,6 +67,33 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         searchBar = TextFieldWidget(textRenderer, x + 19, y + 7, 81, 10, Text.literal(""))
         searchBar?.setDrawsBackground(false)
         searchBar?.setChangedListener(::updateChildren)
+
+        craftings.clear()
+        val selectedRecipe = selectedCrafting?.recipe
+        if(craftingProgress > 0 && craftingProgress < (selectedCrafting?.recipeHistory?.size ?: 0)*2) {
+            craftingProgress = 0
+        }
+        selectedCrafting = null
+        handler.craftableRecipes.entries.forEach { entry ->
+            val btn = CraftingButtonWidget(handler, 0, 0, 0, 20, entry.key, entry.value.first, entry.value.second) { button ->
+                val craftingButton = button as? CraftingButtonWidget ?: return@CraftingButtonWidget
+                craftingButton.selected = true
+                craftingButton.active = false
+                selectedCrafting?.selected = false
+                selectedCrafting?.active = true
+                selectedCrafting = craftingButton
+                craftingProgress = 0
+            }
+            if(entry.key == selectedRecipe) {
+                selectedCrafting = btn
+                selectedCrafting?.selected = true
+                selectedCrafting?.active = false
+                if(craftingProgress > 0) {
+                    craftingProgress = (selectedCrafting?.recipeHistory?.size ?: 0)*2
+                }
+            }
+            craftings.add(btn)
+        }
 
         updateChildren("")
     }
@@ -92,13 +118,14 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
     private fun updateChildren(searchString: String) {
         clearChildren()
         addDrawableChild(searchBar)
-        heightBtnReference.clear()
+        craftingsHeight.clear()
 
         scrollableOffset = 0.0
         excessHeight = 0.0
         scrollable = false
 
-        handler.craftableRecipes.entries.filter { (recipe, _) ->
+        craftings.filter { crafting ->
+            val recipe = crafting.recipe
             val filter = searchString.lowercase()
             val itemId = Registry.ITEM.getId(recipe.output.item)
             when {
@@ -109,29 +136,24 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
                 filter.startsWith("@") && itemId.namespace.contains(filter.substring(1)) -> true
                 else -> false
             }
-        }.forEachIndexed { index, entry ->
-            val btn = CraftingButtonWidget(handler, x+5, y+19+(index*20), if(scrollable) 88 else 95, 20, entry.key, entry.value.first, entry.value.second) { button ->
-                val craftingButton = button as? CraftingButtonWidget ?: return@CraftingButtonWidget
-                craftingButton.selected = true
-                craftingButton.active = false
-                selectedCrafting?.selected = false
-                selectedCrafting?.active = true
-                selectedCrafting = craftingButton
-                craftingProgress = 0
-            }
-            this.addSelectableChild(btn)
-            if(btn.y + btn.height > y+158) {
+        }.forEachIndexed { index, crafting ->
+            crafting.x = x+5
+            crafting.y = y+19+(index*20)
+            crafting.width = if(scrollable) 88 else 95
+
+            this.addSelectableChild(crafting)
+            if(crafting.y + crafting.height > y+158) {
                 if(!scrollable) {
                     scrollable = true
                     children().forEach {
                         (it as? ButtonWidget)?.width = 88
                     }
-                    excessHeight += ((btn.y-y) + btn.height) - 158
+                    excessHeight += ((crafting.y-y) + crafting.height) - 158
                 }else{
-                    excessHeight += btn.height
+                    excessHeight += crafting.height
                 }
             }
-            heightBtnReference[btn] = btn.y
+            craftingsHeight[crafting] = crafting.y
         }
     }
 
@@ -212,10 +234,10 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
             DrawableHelper.fill(matrices, x+5, y+19, x+100, y+158, 0xFF8B8B8B.toInt())
             DrawableHelper.fill(matrices, x+93, y+158, x+94, y+159, 0xFFFFFFFF.toInt())
         }
-        if(buttonRenderFramebuffer.textureWidth != client?.framebuffer?.textureWidth || buttonRenderFramebuffer.textureHeight != client?.framebuffer?.textureHeight) {
-            buttonRenderFramebuffer.resize(client?.framebuffer?.textureWidth ?: 1, client?.framebuffer?.textureHeight ?: 1, MinecraftClient.IS_SYSTEM_MAC)
+        if(craftingsRenderFramebuffer.textureWidth != client?.framebuffer?.textureWidth || craftingsRenderFramebuffer.textureHeight != client?.framebuffer?.textureHeight) {
+            craftingsRenderFramebuffer.resize(client?.framebuffer?.textureWidth ?: 1, client?.framebuffer?.textureHeight ?: 1, MinecraftClient.IS_SYSTEM_MAC)
         }
-        buttonRenderFramebuffer.beginWrite(true)
+        craftingsRenderFramebuffer.beginWrite(true)
         RenderSystem.clearColor(0.0f, 0.0f, 0.0f, 0.0f)
         RenderSystem.clear(16384, MinecraftClient.IS_SYSTEM_MAC)
         RenderSystem.clear(256, MinecraftClient.IS_SYSTEM_MAC)
@@ -235,10 +257,10 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         }
         itemRenderer.zOffset = 0f
         zOffset = 0
-        buttonRenderFramebuffer.endWrite()
+        craftingsRenderFramebuffer.endWrite()
         client?.framebuffer?.beginWrite(true)
-        buttonRenderFramebuffer.beginRead()
-        RenderSystem.setShaderTexture(0, buttonRenderFramebuffer.colorAttachment)
+        craftingsRenderFramebuffer.beginRead()
+        RenderSystem.setShaderTexture(0, craftingsRenderFramebuffer.colorAttachment)
         val sf = client?.window?.scaleFactor?.toFloat() ?: 1f
         matrices.push()
         matrices.scale(1/sf, 1/sf, 1/sf)
@@ -252,10 +274,10 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         val y0 = (y+19f)*sf
         val y1 = ((y+19f)*sf)+(139*sf)
 
-        val u0 = ((x+5f)*sf) / buttonRenderFramebuffer.textureWidth
-        val u1 = (((x+5f)*sf)+(95*sf)) / buttonRenderFramebuffer.textureWidth
-        val v0 = ((y+19f-10.5f)*sf) / buttonRenderFramebuffer.textureHeight
-        val v1 = (((y+19f-10.5f)*sf)+(139*sf)) / buttonRenderFramebuffer.textureHeight
+        val u0 = ((x+5f)*sf) / craftingsRenderFramebuffer.textureWidth
+        val u1 = (((x+5f)*sf)+(95*sf)) / craftingsRenderFramebuffer.textureWidth
+        val v0 = ((y+19f-10.5f)*sf) / craftingsRenderFramebuffer.textureHeight
+        val v1 = (((y+19f-10.5f)*sf)+(139*sf)) / craftingsRenderFramebuffer.textureHeight
 
         bufferBuilder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE)
         bufferBuilder.vertex(matrix, x0, y1, 0f).texture(u0, v0).next()
@@ -266,7 +288,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
 
         matrices.pop()
 
-        buttonRenderFramebuffer.endRead()
+        craftingsRenderFramebuffer.endRead()
         RenderSystem.setShaderTexture(0, TEXTURE)
         if(scrollable) {
             val offset = MathHelper.lerp(scrollableOffset / excessHeight, 19.0, 131.0)
@@ -311,21 +333,42 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
                 craftingPartProgress = 0
             }
             if(craftingPartProgress == 0) {
-                if(handler.slots[0].hasStack() && !handler.slots[0].stack.isEmpty) {
-                    client?.interactionManager?.clickSlot(handler.syncId, 0, 0, SlotActionType.QUICK_MOVE, client?.player)
-                    client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.BLOCK_SMITHING_TABLE_USE, random.nextFloat() * 0.1f + 0.9f))
+                if(craftingProgress % 2 == 1) {
+                    val recipe = recipeHistory[(craftingProgress-1)/2]
+                    if(handler.slots[0].hasStack() && !handler.slots[0].stack.isEmpty && ItemStack.areEqual(handler.slots[0].stack, recipe.output)) {
+                        client?.interactionManager?.clickSlot(handler.syncId, 0, 0, SlotActionType.QUICK_MOVE, client?.player)
+                        if(handler.slots[0].hasStack() && !handler.slots[0].stack.isEmpty) {
+                            craftingProgress--
+                            client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.ENTITY_VILLAGER_NO, random.nextFloat() * 0.1f + 0.9f))
+                        }else{
+                            client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.BLOCK_SMITHING_TABLE_USE, random.nextFloat() * 0.1f + 0.9f))
+                        }
+                    }else{
+                        craftingProgress -= 2
+                        client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.ENTITY_VILLAGER_NO, random.nextFloat() * 0.1f + 0.9f))
+                    }
                 }else{
-                    val nextRecipe = recipeHistory[craftingProgress/2]
-                    client?.networkHandler?.sendPacket(CraftRequestC2SPacket(handler.syncId, nextRecipe, false))
-                    client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.ENTITY_ITEM_FRAME_ADD_ITEM, 1.0f))
+                    var craftingTableEmpty = true
+                    (1..9).forEach { slot ->
+                        if(handler.slots[slot].hasStack() && !handler.slots[slot].stack.isEmpty) {
+                            client?.interactionManager?.clickSlot(handler.syncId, slot, 0, SlotActionType.QUICK_MOVE, client?.player)
+                            if(handler.slots[slot].hasStack() && !handler.slots[slot].stack.isEmpty) {
+                                craftingTableEmpty = false
+                            }
+                        }
+                    }
+                    if(craftingTableEmpty) {
+                        val recipe = recipeHistory[craftingProgress / 2]
+                        client?.networkHandler?.sendPacket(CraftRequestC2SPacket(handler.syncId, recipe, false))
+                        client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.ENTITY_ITEM_FRAME_ADD_ITEM, 1.0f))
+                    }else{
+                        craftingProgress--
+                        client?.soundManager?.play(PositionedSoundInstance.master(SoundEvents.ENTITY_VILLAGER_NO, random.nextFloat() * 0.1f + 0.9f))
+                    }
                 }
                 if(++craftingProgress == recipeHistory.size*2) {
                     crafting = false
                     client?.player?.let(handler::populateRecipes)
-                    if(selectedCrafting.notEnoughItems) {
-                        selectedCrafting.selected = false
-                        this.selectedCrafting = null
-                    }
                 }
             }
         }
@@ -334,7 +377,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
 
     private fun updateButtonsHeight() {
         children().forEach {
-            (it as? ButtonWidget)?.y = (heightBtnReference[it] ?: 0) - scrollableOffset.toInt()
+            (it as? ButtonWidget)?.y = (craftingsHeight[it] ?: 0) - scrollableOffset.toInt()
         }
     }
 

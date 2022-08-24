@@ -72,7 +72,7 @@ object CraftingBenchClient: ClientModInitializer {
 
     private fun populateRecipeTree(originalRecipeHistory: List<CraftingRecipe>, originalIngredients: List<IntList>, requiredRecipes: Map<CraftingRecipe, Int>, depth: Int = 0): List<Pair<List<CraftingRecipe>, List<IntList>>> {
         val recipeTree = mutableListOf<Pair<List<CraftingRecipe>, List<IntList>>>()
-        if(depth > 8) {
+        if(depth > 4) {
             return recipeTree
         }
 
