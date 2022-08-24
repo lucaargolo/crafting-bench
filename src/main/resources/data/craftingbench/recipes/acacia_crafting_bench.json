@@ -1,0 +1,29 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "###",
+    "iCi",
+    "OZO"
+  ],
+  "key": {
+    "#": {
+      "item": "minecraft:acacia_planks"
+    },
+    "i": {
+      "tag": "c:iron_ingots"
+    },
+    "C": {
+      "tag": "c:workbenches"
+    },
+    "O": {
+      "tag": "minecraft:acacia_logs"
+    },
+    "Z": {
+      "tag": "c:wooden_chests"
+    }
+  },
+  "result": {
+    "item": "craftingbench:acacia_crafting_bench",
+    "count": 1
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "###",
+    "iCi",
+    "OZO"
+  ],
+  "key": {
+    "#": {
+      "item": "minecraft:crimson_planks"
+    },
+    "i": {
+      "tag": "c:iron_ingots"
+    },
+    "C": {
+      "tag": "c:workbenches"
+    },
+    "O": {
+      "tag": "minecraft:crimson_stems"
+    },
+    "Z": {
+      "tag": "c:wooden_chests"
+    }
+  },
+  "result": {
+    "item": "craftingbench:crimson_crafting_bench",
+    "count": 1
+  }
+}

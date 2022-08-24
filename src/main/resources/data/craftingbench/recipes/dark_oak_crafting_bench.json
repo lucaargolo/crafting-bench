@@ -1,0 +1,29 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "###",
+    "iCi",
+    "OZO"
+  ],
+  "key": {
+    "#": {
+      "item": "minecraft:dark_oak_planks"
+    },
+    "i": {
+      "tag": "c:iron_ingots"
+    },
+    "C": {
+      "tag": "c:workbenches"
+    },
+    "O": {
+      "tag": "minecraft:dark_oak_logs"
+    },
+    "Z": {
+      "tag": "c:wooden_chests"
+    }
+  },
+  "result": {
+    "item": "craftingbench:dark_oak_crafting_bench",
+    "count": 1
+  }
+}
