@@ -1,8 +1,0 @@
-{
-  "parent": "craftingbench:block/crafting_bench_right",
-  "textures": {
-    "particle": "block/mangrove_planks",
-    "planks": "block/mangrove_planks",
-    "log": "block/mangrove_log"
-  }
-}

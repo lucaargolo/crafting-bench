@@ -1,6 +1,0 @@
-{
-  "parent": "craftingbench:block/crafting_bench_toolbox",
-  "textures": {
-    "particle": "block/mangrove_planks"
-  }
-}

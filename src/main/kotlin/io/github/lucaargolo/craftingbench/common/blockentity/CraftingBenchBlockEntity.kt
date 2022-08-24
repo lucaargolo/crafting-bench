@@ -1,5 +1,6 @@
 package io.github.lucaargolo.craftingbench.common.blockentity
 
+import io.github.lucaargolo.craftingbench.CraftingBench.stacks
 import io.github.lucaargolo.craftingbench.common.block.CraftingBenchBlock
 import io.github.lucaargolo.craftingbench.common.screenhandler.CraftingBenchScreenHandler
 import net.minecraft.block.BlockState

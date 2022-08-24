@@ -6,7 +6,8 @@
   "mixins": [
     "CraftingInventoryAccessor",
     "InputSlotFilterMixin",
-    "RecipeManagerInvoker"
+    "RecipeManagerInvoker",
+    "SimpleInventoryAccessor"
   ],
   "client": [
     "ClientPlayNetworkHandlerMixin"

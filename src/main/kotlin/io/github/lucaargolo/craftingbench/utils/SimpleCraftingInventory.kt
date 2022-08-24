@@ -1,5 +1,6 @@
 package io.github.lucaargolo.craftingbench.utils
 
+import io.github.lucaargolo.craftingbench.CraftingBench.stacks
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.inventory.CraftingInventory
 import net.minecraft.inventory.Inventories

@@ -20,6 +20,7 @@ import net.minecraft.state.StateManager
 import net.minecraft.state.property.EnumProperty
 import net.minecraft.state.property.Properties
 import net.minecraft.text.Text
+import net.minecraft.text.TranslatableText
 import net.minecraft.util.ActionResult
 import net.minecraft.util.Hand
 import net.minecraft.util.ItemScatterer
@@ -159,7 +160,7 @@ class CraftingBenchBlock(settings: Settings) : BlockWithEntity(settings) {
     override fun getRenderType(state: BlockState) = BlockRenderType.MODEL
 
     companion object {
-        val TITLE: Text = Text.translatable("container.craftingbench.crafting_bench")
+        val TITLE: Text = TranslatableText("container.craftingbench.crafting_bench")
 
         private val FACING = Properties.HORIZONTAL_FACING
         private val TYPE = EnumProperty.of("type", Type::class.java)

@@ -25,9 +25,9 @@ import net.minecraft.screen.slot.SlotActionType
 import net.minecraft.sound.SoundEvents
 import net.minecraft.text.Text
 import net.minecraft.util.math.MathHelper
-import net.minecraft.util.math.random.Random
 import net.minecraft.util.registry.Registry
 import org.lwjgl.glfw.GLFW
+import java.util.*
 
 class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: PlayerInventory, title: Text) : HandledScreen<CraftingBenchScreenHandler>(handler, inventory, title) {
 
@@ -35,7 +35,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
     private val craftingsRenderFramebuffer = SimpleFramebuffer(1, 1, true, MinecraftClient.IS_SYSTEM_MAC)
 
     //Variables used for utilities
-    private val random = Random.create()
+    private val random = Random()
     private var internalTick = 0
 
     //Variables used for storing and showing the possible craftings
@@ -64,7 +64,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
     override fun init() {
         super.init()
 
-        searchBar = TextFieldWidget(textRenderer, x + 19, y + 7, 81, 10, Text.literal(""))
+        searchBar = TextFieldWidget(textRenderer, x + 19, y + 7, 81, 10, Text.of(""))
         searchBar?.setDrawsBackground(false)
         searchBar?.setChangedListener(::updateChildren)
 
@@ -284,7 +284,8 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         bufferBuilder.vertex(matrix, x1, y1, 0f).texture(u1, v0).next()
         bufferBuilder.vertex(matrix, x1, y0, 0f).texture(u1, v1).next()
         bufferBuilder.vertex(matrix, x0, y0, 0f).texture(u0, v1).next()
-        BufferRenderer.drawWithShader(bufferBuilder.end())
+        bufferBuilder.end()
+        BufferRenderer.draw(bufferBuilder)
 
         matrices.pop()
 
@@ -381,7 +382,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
         }
     }
 
-    inner class CraftingButtonWidget(private val handler: CraftingBenchScreenHandler, x: Int, y: Int, width: Int, height: Int, val recipe: Recipe<*>, val recipeHistory: List<Recipe<*>>, val requiredItems: List<IntList>, onPressAction: PressAction) : ButtonWidget(x, y, width, height, Text.literal(""), onPressAction) {
+    inner class CraftingButtonWidget(private val handler: CraftingBenchScreenHandler, x: Int, y: Int, width: Int, height: Int, val recipe: Recipe<*>, val recipeHistory: List<Recipe<*>>, val requiredItems: List<IntList>, onPressAction: PressAction) : ButtonWidget(x, y, width, height, Text.of(""), onPressAction) {
 
         private val client = MinecraftClient.getInstance()
 
