@@ -1,10 +1,12 @@
 package io.github.lucaargolo.craftingbench.client
 
+import io.github.lucaargolo.craftingbench.CraftingBench
 import io.github.lucaargolo.craftingbench.common.block.BlockCompendium
 import io.github.lucaargolo.craftingbench.common.blockentity.BlockEntityCompendium
 import io.github.lucaargolo.craftingbench.common.item.ItemCompendium
 import io.github.lucaargolo.craftingbench.common.screenhandler.ScreenHandlerCompendium
 import io.github.lucaargolo.craftingbench.mixin.RecipeManagerInvoker
+import it.unimi.dsi.fastutil.ints.IntArrayList
 import it.unimi.dsi.fastutil.ints.IntList
 import net.fabricmc.api.ClientModInitializer
 import net.minecraft.recipe.*
@@ -20,6 +22,10 @@ object CraftingBenchClient: ClientModInitializer {
     private val recipesYouCanDoWithItem: MutableMap<Int, MutableSet<CraftingRecipe>> = mutableMapOf()
 
     fun onSynchronizeRecipes(recipeManager: RecipeManager) {
+        CraftingBench.LOGGER.info("[Crafting Bench] New recipes received, constructing recipe trees...")
+        if(CraftingBench.NBTCRAFTING) {
+            CraftingBench.LOGGER.warn("[Crafting Bench] NBTCrafting is present! Recipes trees might take longer to build and will not work correctly.")
+        }
         val time = measureTimeMillis {
             recipeTrees.clear()
             recipesYouCanDoWithItem.clear()
@@ -29,7 +35,8 @@ object CraftingBenchClient: ClientModInitializer {
                 if (recipe is ShapedRecipe || recipe is ShapelessRecipe) {
                     recipe.ingredients.forEach { ingredient ->
                         if (!ingredient.isEmpty) {
-                            ingredient.matchingItemIds.forEach { itemId ->
+                            ingredient.matchingItemIds.forEach {
+                                val itemId = if(CraftingBench.NBTCRAFTING) Registry.ITEM.getRawId(RecipeMatcher.getStackFromId(it).item) else it
                                 recipesYouCanDoWithItem.getOrPut(itemId, ::mutableSetOf).add(recipe)
                             }
                         }
@@ -39,13 +46,15 @@ object CraftingBenchClient: ClientModInitializer {
             }
             recipes.forEach(::populateRecipeTree)
         }
-        println("Constructed recipe trees in $time ms")
+        CraftingBench.LOGGER.info("[Crafting Bench] Constructed recipe trees in $time ms")
     }
 
     private fun populateRecipeTree(recipe: CraftingRecipe, depth: Int = 0): MutableList<Pair<List<CraftingRecipe>, List<IntList>>> {
         return recipeTrees[recipe] ?: let{
             val recipeTree = mutableListOf<Pair<List<CraftingRecipe>, List<IntList>>>()
-            val ingredients = recipe.ingredients.map(Ingredient::getMatchingItemIds)
+            val ingredients = recipe.ingredients.map(Ingredient::getMatchingItemIds).let {
+                if(CraftingBench.NBTCRAFTING) it.map { IntArrayList().also { realIntList -> it.forEach { itemId -> realIntList.add(Registry.ITEM.getRawId(RecipeMatcher.getStackFromId(itemId).item)) } } } else it
+            }
             //First path
             recipeTree.add(Pair(listOf(recipe), ingredients))
             //Recursive paths
@@ -72,7 +81,7 @@ object CraftingBenchClient: ClientModInitializer {
 
     private fun populateRecipeTree(originalRecipeHistory: List<CraftingRecipe>, originalIngredients: List<IntList>, requiredRecipes: Map<CraftingRecipe, Int>, depth: Int = 0): List<Pair<List<CraftingRecipe>, List<IntList>>> {
         val recipeTree = mutableListOf<Pair<List<CraftingRecipe>, List<IntList>>>()
-        if(depth > 4) {
+        if(depth > 3) {
             return recipeTree
         }
 
@@ -97,7 +106,9 @@ object CraftingBenchClient: ClientModInitializer {
                 }
             }
             repeat(qnt) {
-                ingredients.addAll(recipe.ingredients.map(Ingredient::getMatchingItemIds))
+                ingredients.addAll(recipe.ingredients.map(Ingredient::getMatchingItemIds).let {
+                    if(CraftingBench.NBTCRAFTING) it.map { IntArrayList().also { realIntList -> it.forEach { itemId -> realIntList.add(Registry.ITEM.getRawId(RecipeMatcher.getStackFromId(itemId).item)) } } } else it
+                })
             }
 
             recipeHistory.reverse()
@@ -118,6 +129,7 @@ object CraftingBenchClient: ClientModInitializer {
                 }
             }
 
+
             allRequiredRecipes.forEach { (requiredRecipe, requiredQnt) ->
                 populateRecipeTree(requiredRecipe, depth).forEach { (innerRecipeHistory, innerIngredients) ->
                     val combinedRecipeHistory = mutableListOf<CraftingRecipe>()
@@ -127,12 +139,12 @@ object CraftingBenchClient: ClientModInitializer {
                     combinedRecipeHistory.addAll(recipeHistory)
                     val innerOutputQnt = requiredRecipe.output.count * requiredQnt
                     var innerOutputExcess = innerOutputQnt
-                    val innerOutputItem = Registry.ITEM.getRawId(requiredRecipe.output.item)
+                    val innerOutputItem = RecipeMatcher.getItemId(requiredRecipe.output)
                     val combinedIngredients = ingredients.toMutableList()
                     val combinedIngredientsIterator = combinedIngredients.iterator()
                     while (combinedIngredientsIterator.hasNext()) {
                         val ingredient = combinedIngredientsIterator.next()
-                        if(innerOutputExcess > 0 && ingredient.contains(innerOutputItem)) {
+                        if (innerOutputExcess > 0 && ingredient.contains(innerOutputItem)) {
                             combinedIngredientsIterator.remove()
                             innerOutputExcess--
                         }
@@ -143,6 +155,7 @@ object CraftingBenchClient: ClientModInitializer {
                     recipeTree.add(Pair(combinedRecipeHistory, combinedIngredients))
                 }
             }
+
         }
 
         return recipeTree
