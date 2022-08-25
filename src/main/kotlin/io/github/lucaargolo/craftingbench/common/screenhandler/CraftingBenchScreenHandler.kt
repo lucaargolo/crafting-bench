@@ -1,5 +1,6 @@
 package io.github.lucaargolo.craftingbench.common.screenhandler
 
+import io.github.lucaargolo.craftingbench.CraftingBench
 import io.github.lucaargolo.craftingbench.client.CraftingBenchClient
 import io.github.lucaargolo.craftingbench.client.screen.CraftingBenchScreen
 import io.github.lucaargolo.craftingbench.utils.SimpleCraftingInventory
@@ -179,7 +180,7 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
                     }
                 }
             }
-            println("Populated recipes in $time ms")
+            CraftingBench.LOGGER.info("[Crafting Bench] Populated recipes in $time ms")
 
             val client = MinecraftClient.getInstance()
             client.execute {

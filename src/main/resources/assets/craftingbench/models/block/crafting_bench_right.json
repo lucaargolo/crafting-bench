@@ -3,7 +3,7 @@
 	"textures": {
 		"metal": "craftingbench:block/metal",
 		"tools": "craftingbench:block/tools"
-    },
+	},
 	"elements": [
 		{
 			"name": "tools",
@@ -42,8 +42,8 @@
 			}
 		},
 		{
-			"from": [14.8, -9.6, 8.5],
-			"to": [15.6, 9.4, 11.5],
+			"from": [14.9, -9.6, 8.5],
+			"to": [15.7, 9.4, 11.5],
 			"rotation": {"angle": -45, "axis": "x", "origin": [14.7, 1.32753, -0.44023]},
 			"faces": {
 				"north": {"uv": [0, 0, 0.8, 16], "texture": "#log"},
@@ -77,8 +77,8 @@
 			}
 		},
 		{
-			"from": [14.7, 0, 13],
-			"to": [15.7, 2, 16],
+			"from": [14.8, 0, 13],
+			"to": [15.8, 2, 16],
 			"rotation": {"angle": 0, "axis": "y", "origin": [14.7, 0, 0]},
 			"faces": {
 				"north": {"uv": [0, 0, 1, 2], "texture": "#metal"},

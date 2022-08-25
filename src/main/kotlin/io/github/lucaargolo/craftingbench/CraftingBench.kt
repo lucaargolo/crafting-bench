@@ -7,13 +7,18 @@ import io.github.lucaargolo.craftingbench.common.screenhandler.ScreenHandlerComp
 import io.github.lucaargolo.craftingbench.utils.ModIdentifier
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.client.itemgroup.FabricItemGroupBuilder
+import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.item.Item
 import net.minecraft.item.ItemStack
 import net.minecraft.util.Rarity
+import org.apache.logging.log4j.LogManager
+import org.apache.logging.log4j.Logger
 
 object CraftingBench: ModInitializer {
 
     const val MOD_ID = "craftingbench"
+    val LOGGER: Logger = LogManager.getLogger("Crafting Bench")
+    val NBTCRAFTING = FabricLoader.getInstance().isModLoaded("nbtcrafting")
     private val creativeTab = FabricItemGroupBuilder.create(ModIdentifier("creative_tab")).icon{ ItemStack(BlockCompendium.OAK_CRAFTING_BENCH) }.build()
 
     override fun onInitialize() {
