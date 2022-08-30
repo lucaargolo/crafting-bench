@@ -21,6 +21,7 @@ object CraftingBench: ModInitializer {
     val NBTCRAFTING = FabricLoader.getInstance().isModLoaded("nbtcrafting")
     private val creativeTab = FabricItemGroupBuilder.create(ModIdentifier("creative_tab")).icon{ ItemStack(BlockCompendium.OAK_CRAFTING_BENCH) }.build()
 
+    var unlockUnknownRecipes = false
     override fun onInitialize() {
         BlockCompendium.initialize()
         ItemCompendium.initialize()

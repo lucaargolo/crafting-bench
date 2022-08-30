@@ -3,8 +3,9 @@ package io.github.lucaargolo.craftingbench.common.screenhandler
 import io.github.lucaargolo.craftingbench.CraftingBench
 import io.github.lucaargolo.craftingbench.client.CraftingBenchClient
 import io.github.lucaargolo.craftingbench.client.screen.CraftingBenchScreen
+import io.github.lucaargolo.craftingbench.utils.RecipeTree
 import io.github.lucaargolo.craftingbench.utils.SimpleCraftingInventory
-import it.unimi.dsi.fastutil.ints.IntArrayList
+import it.unimi.dsi.fastutil.ints.Int2IntArrayMap
 import it.unimi.dsi.fastutil.ints.IntList
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.network.ClientPlayerEntity
@@ -25,6 +26,7 @@ import net.minecraft.screen.ScreenHandlerListener
 import net.minecraft.screen.slot.CraftingResultSlot
 import net.minecraft.screen.slot.Slot
 import net.minecraft.server.network.ServerPlayerEntity
+import net.minecraft.util.Identifier
 import net.minecraft.util.registry.Registry
 import net.minecraft.world.World
 import kotlin.concurrent.thread
@@ -37,7 +39,7 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
     private val craftingInventory = SimpleCraftingInventory(this, 3, 3, simpleCraftingInventory)
     private val result = CraftingResultInventory()
 
-    val craftableRecipes = mutableMapOf<Recipe<*>, Pair<List<Recipe<*>>, List<IntList>>>()
+    val craftableRecipes = mutableMapOf<CraftingRecipe, Pair<List<CraftingRecipe>, List<IntList>>>()
     val combinedInventory = object: Inventory {
         override fun clear() {
             playerInventory.clear()
@@ -135,48 +137,122 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
     }
 
     fun populateRecipes(player: ClientPlayerEntity) {
-        val intInventory = IntArrayList()
+        val rawItemInv = Int2IntArrayMap()
+        rawItemInv.defaultReturnValue(0)
         repeat(player.inventory.size()) { slot ->
             val stack = player.inventory.getStack(slot)
             val itemId = Registry.ITEM.getRawId(stack.item)
-            repeat(stack.count) {
-                intInventory.add(itemId)
-            }
+            rawItemInv.put(itemId, rawItemInv.get(itemId)+stack.count)
         }
         repeat(inventory.size()) { slot ->
             val stack = inventory.getStack(slot)
             val itemId = Registry.ITEM.getRawId(stack.item)
-            repeat(stack.count) {
-                intInventory.add(itemId)
-            }
+            rawItemInv.put(itemId, rawItemInv.get(itemId)+stack.count)
         }
         thread(name = "Populate-Recipes") {
-            val newCraftableRecipes = mutableMapOf<Recipe<*>, Pair<List<Recipe<*>>, List<IntList>>>()
+            val newCraftableRecipes = mutableMapOf<CraftingRecipe, Pair<List<CraftingRecipe>, List<IntList>>>()
+            val possibleRecipeTrees = mutableSetOf<RecipeTree>()
 
             val time = measureTimeMillis {
-                CraftingBenchClient.recipeTrees.forEach { (recipe, recipeTree) ->
-                    recipeTree.forEach { (recipeHistory, recipeIngredients) ->
-                        val intInventoryCopy = intInventory.clone()
+                rawItemInv.keys.forEach { item ->
+                    CraftingBenchClient.itemToRecipeTrees[item]?.forEach { nextRecipeTree ->
+                        val requiredIngredients = nextRecipeTree.recipe.ingredients.toMutableList()
+                        val requiredIngredientsIterator = requiredIngredients.iterator()
+                        while (requiredIngredientsIterator.hasNext()) {
+                            val requiredIngredient = requiredIngredientsIterator.next()
+                            var found = requiredIngredient.isEmpty
+                            requiredIngredient.matchingItemIds.forEach testIngredient@{ item ->
+                                if(rawItemInv.containsKey(item)) {
+                                    found = true
+                                    return@testIngredient
+                                }
+                            }
+                            if(found) {
+                                requiredIngredientsIterator.remove()
+                            }
+                        }
+                        if(requiredIngredients.isEmpty()) {
+                            possibleRecipeTrees.add(nextRecipeTree)
+                        }
+                    }
+                }
+                val iterator = possibleRecipeTrees.toMutableList().listIterator()
+                while(iterator.hasNext() || iterator.hasPrevious()) {
+                    val recipeTree = if(iterator.hasNext()) iterator.next() else iterator.previous()
+                    iterator.remove()
+                    val recipe = recipeTree.recipe
+                    recipeTree.getBranches(possibleRecipeTrees, 0).forEach { branch ->
+                        val recipeHistory = branch.recipeHistory
+                        val recipeIngredients = branch.ingredients
+                        val rawItemInvCopy = rawItemInv.clone()
                         val ingredientsClone = recipeIngredients.toMutableList()
                         val ingredientsIterator = ingredientsClone.iterator()
-                        while(ingredientsIterator.hasNext()) {
+                        while (ingredientsIterator.hasNext()) {
                             val ingredient = ingredientsIterator.next()
                             var found = ingredient.isEmpty()
                             ingredient.forEach ingredientTest@{ itemId ->
-                                if(intInventoryCopy.remove(itemId)) {
+                                val itemQnt = rawItemInvCopy.get(itemId)
+                                if (itemQnt > 0) {
+                                    rawItemInvCopy.put(itemId, itemQnt - 1)
                                     found = true
                                     return@ingredientTest
                                 }
                             }
-                            if(found) {
+                            if (found) {
                                 ingredientsIterator.remove()
-                            }else{
+                            } else {
                                 break
                             }
                         }
-                        if(ingredientsClone.isEmpty() && (!newCraftableRecipes.contains(recipe) || newCraftableRecipes[recipe]!!.first.size > recipeHistory.size)) {
-                            newCraftableRecipes[recipe] = Pair(recipeHistory, recipeIngredients)
+                        if (ingredientsClone.isEmpty()) {
+                            val nextRecipeTrees = CraftingBenchClient.itemToRecipeTrees[Registry.ITEM.getRawId(recipe.output.item)] ?: emptyList()
+                            nextRecipeTrees.forEach { nextRecipeTree ->
+                                val requiredIngredients = nextRecipeTree.recipe.ingredients.toMutableList()
+                                val requiredIngredientsIterator = requiredIngredients.iterator()
+                                while (requiredIngredientsIterator.hasNext()) {
+                                    val requiredIngredient = requiredIngredientsIterator.next()
+                                    var found = requiredIngredient.isEmpty
+                                    if (requiredIngredient.test(recipe.output)) {
+                                        found = true
+                                    }
+                                    if (!found) {
+                                        requiredIngredient.matchingItemIds.forEach testIngredient@{ item ->
+                                            if (rawItemInvCopy.containsKey(item)) {
+                                                found = true
+                                                return@testIngredient
+                                            }
+                                        }
+                                    }
+                                    if (!found) {
+                                        possibleRecipeTrees.forEach testRecipeTrees@{ recipeTree ->
+                                            if (requiredIngredient.test(recipeTree.recipe.output)) {
+                                                found = true
+                                                return@testRecipeTrees
+                                            }
+                                        }
+                                    }
+                                    if (!found) {
+                                        nextRecipeTrees.forEach testRecipeTrees@{ recipeTree ->
+                                            if (requiredIngredient.test(recipeTree.recipe.output)) {
+                                                found = true
+                                                return@testRecipeTrees
+                                            }
+                                        }
+                                    }
+                                    if (found) {
+                                        requiredIngredientsIterator.remove()
+                                    }
+                                }
+                                if (requiredIngredients.isEmpty() && possibleRecipeTrees.add(nextRecipeTree)) {
+                                    iterator.add(nextRecipeTree)
+                                }
+
+                            }
+                            if (!newCraftableRecipes.contains(recipe) || newCraftableRecipes[recipe]!!.first.size > recipeHistory.size) {
+                                newCraftableRecipes[recipe] = Pair(recipeHistory, recipeIngredients)
+                            }
                         }
+
                     }
                 }
             }
@@ -186,9 +262,7 @@ class CraftingBenchScreenHandler(syncId: Int, private val playerInventory: Playe
             client.execute {
                 craftableRecipes.clear()
                 newCraftableRecipes.forEach { (recipe, recipeHistory) ->
-                    if(player.recipeBook.contains(recipe)) {
-                        craftableRecipes[recipe] = recipeHistory
-                    }
+                    craftableRecipes[recipe] = recipeHistory
                 }
                 (client.currentScreen as? CraftingBenchScreen)?.init(client, client.window.scaledWidth, client.window.scaledHeight)
             }

@@ -1,12 +1,15 @@
 package io.github.lucaargolo.craftingbench.mixin;
 
+import io.github.lucaargolo.craftingbench.CraftingBench;
 import io.github.lucaargolo.craftingbench.common.screenhandler.CraftingBenchScreenHandler;
 import net.minecraft.inventory.Inventory;
 import net.minecraft.inventory.SimpleInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.recipe.InputSlotFiller;
+import net.minecraft.recipe.Recipe;
 import net.minecraft.screen.AbstractRecipeScreenHandler;
 import net.minecraft.screen.slot.Slot;
+import net.minecraft.server.network.ServerPlayerEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -17,6 +20,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class InputSlotFilterMixin<C extends Inventory> {
 
     @Shadow protected AbstractRecipeScreenHandler<C> handler;
+
+    @Inject(at = @At("HEAD"), method = "fillInputSlots(Lnet/minecraft/server/network/ServerPlayerEntity;Lnet/minecraft/recipe/Recipe;Z)V")
+    public void unlockUnknownRecipe(ServerPlayerEntity entity, Recipe<C> recipe, boolean craftAll, CallbackInfo ci) {
+        if(handler instanceof CraftingBenchScreenHandler) {
+            CraftingBench.INSTANCE.setUnlockUnknownRecipes(true);
+        }
+    }
 
     @Inject(at = @At("HEAD"), method = "fillInputSlot", cancellable = true)
     public void fillInputSlotUsingBenchContents(Slot slot, ItemStack stack, CallbackInfo ci) {
