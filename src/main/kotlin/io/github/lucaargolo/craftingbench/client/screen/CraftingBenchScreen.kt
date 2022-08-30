@@ -64,7 +64,9 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
     override fun init() {
         super.init()
 
+        val oldSeachText = searchBar?.text ?: ""
         searchBar = TextFieldWidget(textRenderer, x + 19, y + 7, 81, 10, Text.of(""))
+        searchBar?.text = oldSeachText
         searchBar?.setDrawsBackground(false)
         searchBar?.setChangedListener(::updateChildren)
 
@@ -95,7 +97,7 @@ class CraftingBenchScreen(handler: CraftingBenchScreenHandler, inventory: Player
             craftings.add(btn)
         }
 
-        updateChildren("")
+        updateChildren(oldSeachText)
     }
 
     override fun resize(client: MinecraftClient?, width: Int, height: Int) {
